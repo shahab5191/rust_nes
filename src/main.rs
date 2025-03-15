@@ -1,3 +1,6 @@
+mod hardware;
+
 fn main() {
-    println!("Hello, world!");
+    let device = hardware::Hardware::new();
+    device.test_hardware();
 }
