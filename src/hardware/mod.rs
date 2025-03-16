@@ -1,22 +1,22 @@
+mod bus;
 mod cpu;
 mod memory;
-use cpu::CPU;
-use memory::Memory;
+use cpu::instructions::{self, AddressMode};
 
 pub struct Hardware {
-    cpu: CPU,
+    bus: bus::Bus,
 }
 
 impl Hardware {
     pub fn new() -> Self {
-        Memory::new();
-        Hardware { cpu: CPU::new() }
+        Self {
+            bus: bus::Bus::new(),
+        }
     }
 
     pub fn test_hardware(mut self) {
-        self.cpu.interpret(vec![0, 0, 0]);
-        self.cpu.print();
-        self.cpu.set_carry(true);
-        self.cpu.print();
+        instructions::adc(&mut self.bus, AddressMode::Immidiate, 0x01);
+        instructions::asl(&mut self.bus, AddressMode::ZeroPageX, 0x02);
+        instructions::and(&mut self.bus, AddressMode::Absolute, 0x02);
     }
 }
