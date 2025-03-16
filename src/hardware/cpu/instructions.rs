@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, UpperHex};
 
 use crate::hardware::bus::Bus;
 
@@ -8,12 +8,14 @@ use super::Registers;
 pub enum AddressMode {
     Implicit,
     Immidiate,
+    Accumulator,
     ZeroPage,
     ZeroPageX,
     ZeroPageY,
     Absolute,
     AbsoluteX,
     AbsoluteY,
+    Relative,
     IndexedIndirect,
     IndirectIndexed,
 }
@@ -21,8 +23,10 @@ pub enum AddressMode {
 impl Display for AddressMode {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            AddressMode::Relative => write!(f, ""),
             AddressMode::Implicit => write!(f, ""),
             AddressMode::Immidiate => write!(f, "#"),
+            AddressMode::Accumulator => write!(f, "A"),
             AddressMode::ZeroPage => write!(f, "$"),
             AddressMode::ZeroPageX => write!(f, "$"),
             AddressMode::ZeroPageY => write!(f, "$"),
@@ -35,10 +39,12 @@ impl Display for AddressMode {
     }
 }
 
-fn format_with_address_mode(address_mode: &AddressMode, operand: u8) -> String {
+fn format_with_address_mode<T: UpperHex>(address_mode: &AddressMode, operand: T) -> String {
     match *address_mode {
         AddressMode::Implicit => "".to_string(),
         AddressMode::Immidiate => format!("#{:X}", operand),
+        AddressMode::Relative => format!("{:X}", operand),
+        AddressMode::Accumulator => "A".to_string(),
         AddressMode::ZeroPage => format!("${:X}", operand),
         AddressMode::ZeroPageX => format!("${:X},X", operand),
         AddressMode::ZeroPageY => format!("${:X},Y", operand),
@@ -50,9 +56,9 @@ fn format_with_address_mode(address_mode: &AddressMode, operand: u8) -> String {
     }
 }
 
-fn log_instruct(instruct: &str, address_mode: &AddressMode, operand: u8) {
+fn log_instruct<T: UpperHex>(instruct: &str, address_mode: &AddressMode, operand: T) {
     let address_format = format_with_address_mode(address_mode, operand);
-    println!("{0} {1}", instruct, address_format);
+    println!("[ {0} {1} ] {2:=<50}", instruct, address_format, "");
 }
 
 pub fn adc(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
@@ -62,7 +68,7 @@ pub fn adc(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
     let result: u16 =
         (value as u16) + (bus.cpu.get(Registers::A) as u16) + (bus.cpu.get_carry() as u16);
     bus.cpu.set_carry(result > 0xFF);
-    bus.cpu.set_zero(result == 0);
+    bus.cpu.set_zero(result & 0xFF == 0);
     bus.cpu.set_overflow(
         ((bus.cpu.get(Registers::A) ^ result as u8) & (value ^ result as u8) & 0x80) != 0,
     );
@@ -81,6 +87,7 @@ pub fn and(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
 }
 
 pub fn asl(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
+    // Arithmetic shift left
     log_instruct("ASL", &address_mode, operand);
     let value = bus.read_address_with_mode(address_mode, operand as u16);
     let result = value << 1;
@@ -88,4 +95,41 @@ pub fn asl(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
     bus.cpu.set_zero(result == 0);
     bus.cpu.set_negative(result & 0x80 != 0);
     bus.cpu.set(Registers::A, result);
+}
+
+pub fn bcc(bus: &mut Bus, address_mode: AddressMode, operand: i8) {
+    // Branch if carry clear
+    log_instruct("BCC", &address_mode, operand);
+    if bus.cpu.get_carry() == 0 {
+        bus.cpu
+            .set_counter((bus.cpu.get_counter() as i16 + operand as i16) as u16);
+    }
+}
+
+pub fn bcs(bus: &mut Bus, address_mode: AddressMode, operand: i8) {
+    // Branch if carry set
+    log_instruct("BCS", &address_mode, operand);
+    if bus.cpu.get_carry() != 0 {
+        bus.cpu
+            .set_counter((bus.cpu.get_counter() as i16 + operand as i16) as u16);
+    }
+}
+
+pub fn beq(bus: &mut Bus, address_mode: AddressMode, operand: i8) {
+    // Branch if equal
+    log_instruct("BEQ", &address_mode, operand);
+    if bus.cpu.get_zero() != 0 {
+        bus.cpu
+            .set_counter((bus.cpu.get_counter() as i16 + operand as i16) as u16);
+    }
+}
+
+pub fn bit(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
+    // Bit test
+    log_instruct("BIT", &address_mode, operand);
+    let value = bus.read_address_with_mode(address_mode, operand as u16);
+    let result = bus.cpu.get(Registers::A) & value;
+    bus.cpu.set_zero(result == 0);
+    bus.cpu.set_overflow(value & 0x40 != 0);
+    bus.cpu.set_negative(value & 0x80 != 0);
 }

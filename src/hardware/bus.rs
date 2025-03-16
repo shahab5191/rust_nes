@@ -27,8 +27,10 @@ impl Bus {
 
     pub fn read_address_with_mode(&self, address_mode: AddressMode, operand: u16) -> u8 {
         match address_mode {
-            AddressMode::Implicit => operand as u8,
-            AddressMode::Immidiate => self.memory.read(operand % 256),
+            AddressMode::Implicit => 0,
+            AddressMode::Immidiate => operand as u8,
+            AddressMode::Relative => 0,
+            AddressMode::Accumulator => self.cpu.get(Registers::A),
             AddressMode::IndexedIndirect => {
                 let zero_page_pointer = (operand + (self.cpu.get(Registers::X) as u16)) % 256;
                 let low_byte = self.memory.read(zero_page_pointer);

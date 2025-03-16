@@ -33,12 +33,13 @@ impl CPU {
     pub fn interpret(&mut self, program: Vec<u8>) {}
 
     fn set_status(&mut self, bit: u8, state: bool) {
-        let mask = (1 << bit) & ((state as u8) << bit);
-        self.p |= mask;
-        println!("Status: {0:010b}", self.p);
+        self.p &= !(1 << bit); // Clear the bit
+        self.p |= (state as u8) << bit;
+        println!("Status: {0:08b}", self.p);
     }
+
     fn get_status(&self, bit: u8) -> u8 {
-        ((1 << bit) ^ (self.p)) >> bit
+        ((1 << bit) & (self.p)) >> bit
     }
 
     pub fn set_carry(&mut self, state: bool) {
@@ -105,37 +106,51 @@ impl CPU {
             Registers::A => self.a,
             Registers::S => self.s,
         };
-        println!("Register({0:?}): {1:010b}", register, value);
+        println!("Register({0:?}): {1:08b}", register, value);
         value
     }
 
     pub fn set(&mut self, register: Registers, value: u8) {
         println!("Setting register: {:?}", register);
         match register {
-            Registers::X => self.x = value,
-            Registers::Y => self.y = value,
-            Registers::A => self.a = value,
-            Registers::S => self.s = value,
-            Registers::P => self.p = value,
+            Registers::X => {
+                self.x = value;
+                println!("Register({0:?}): {1:08b}", register, self.x);
+            }
+            Registers::Y => {
+                self.y = value;
+                println!("Register({0:?}): {1:08b}", register, self.y);
+            }
+            Registers::A => {
+                self.a = value;
+                println!("Register({0:?}): {1:08b}", register, self.a);
+            }
+            Registers::S => {
+                self.s = value;
+                println!("Register({0:?}): {1:08b}", register, self.s);
+            }
+            Registers::P => {
+                self.p = value;
+                println!("Register({0:?}): {1:08b}", register, self.p);
+            }
         };
-        println!("{0:?}: {1:010b}", register, value);
     }
 
     pub fn get_counter(&self) -> u16 {
-        println!("Counter: {0:010b}", self.pc);
+        println!("Counter: {0:08b}", self.pc);
         self.pc
     }
-    pub fn setg_counter(&mut self, value: u16) {
-        println!("Setting counter: {0:010b}", value);
+    pub fn set_counter(&mut self, value: u16) {
+        println!("Setting counter: {0:08b}", value);
         self.pc = value;
-        println!("Counter: {0:010b}", self.pc);
+        println!("Counter: {0:08b}", self.pc);
     }
-    pub fn print(&self) {
-        println!("x: {0:010b}", self.x);
-        println!("y: {0:010b}", self.y);
-        println!("accumulator: {0:010b}", self.a);
-        println!("stack: {0:010b}", self.s);
-        println!("status: {0:010b}", self.p);
-        println!("counter: {0:010b}", self.pc);
+    pub fn dump_registers(&self) {
+        println!("x: {0:08b}", self.x);
+        println!("y: {0:08b}", self.y);
+        println!("accumulator: {0:08b}", self.a);
+        println!("stack: {0:08b}", self.s);
+        println!("status: {0:08b}", self.p);
+        println!("counter: {0:b}", self.pc);
     }
 }

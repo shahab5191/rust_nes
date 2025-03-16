@@ -16,7 +16,7 @@ impl Hardware {
 
     pub fn test_hardware(mut self) {
         instructions::adc(&mut self.bus, AddressMode::Immidiate, 0x01);
-        instructions::asl(&mut self.bus, AddressMode::ZeroPageX, 0x02);
-        instructions::and(&mut self.bus, AddressMode::Absolute, 0x02);
+        instructions::bit(&mut self.bus, AddressMode::ZeroPage, 0x00);
+        self.bus.cpu.dump_registers();
     }
 }

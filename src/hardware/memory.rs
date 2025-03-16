@@ -5,7 +5,9 @@ pub struct Memory {
 
 impl Memory {
     pub fn new() -> Self {
-        Memory { mem: [0; 65536] }
+        let mut temp = Memory { mem: [0; 65536] };
+        temp.mem[0x0000] = 0b00000001;
+        temp
     }
 
     pub fn read(&self, address: u16) -> u8 {
