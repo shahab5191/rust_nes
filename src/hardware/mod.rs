@@ -15,5 +15,8 @@ impl Hardware {
 
     pub fn test_hardware(mut self) {
         self.cpu.interpret(vec![0, 0, 0]);
+        self.cpu.print();
+        self.cpu.set_carry(true);
+        self.cpu.print();
     }
 }
