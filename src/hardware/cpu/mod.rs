@@ -21,7 +21,7 @@ pub struct CPU {
 impl CPU {
     pub fn new() -> Self {
         CPU {
-            a: 0,
+            a: 1,
             x: 0,
             y: 0,
             s: 0,
@@ -66,6 +66,10 @@ impl CPU {
         println!("Setting negative to: {0}", state);
         self.set_status(7, state);
     }
+    pub fn set_break(&mut self, state: bool) {
+        println!("Setting break to: {0}", state);
+        self.set_status(4, state);
+    }
 
     pub fn get_carry(&self) -> u8 {
         let flag = self.get_status(0);
@@ -95,6 +99,11 @@ impl CPU {
     pub fn get_negative(&self) -> u8 {
         let flag = self.get_status(7);
         println!("Getting negative: {0}", flag);
+        flag
+    }
+    pub fn get_break(&self) -> u8 {
+        let flag = self.get_status(4);
+        println!("Getting break: {0}", flag);
         flag
     }
 
