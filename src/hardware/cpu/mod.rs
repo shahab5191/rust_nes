@@ -16,6 +16,7 @@ pub struct CPU {
     s: u8,
     p: u8,
     pc: u16,
+    delayed_interrupt: Option<bool>,
 }
 
 impl CPU {
@@ -27,6 +28,7 @@ impl CPU {
             s: 0,
             p: 0b1000,
             pc: 0xFFFC,
+            delayed_interrupt: None,
         }
     }
 

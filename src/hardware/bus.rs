@@ -53,9 +53,9 @@ impl Bus {
     }
 
     pub fn stack_push(&mut self, value: u8) {
-        let sp = self.cpu.get(Registers::S);
-        self.cpu.set(Registers::S, sp - 1);
-        self.write(0x100 + (sp - 1) as u16, value);
+        let new_sp = self.cpu.get(Registers::S).wrapping_sub(1);
+        self.cpu.set(Registers::S, new_sp);
+        self.write(0x100 + new_sp as u16, value);
     }
 
     pub fn stack_pull(&mut self) -> u8 {

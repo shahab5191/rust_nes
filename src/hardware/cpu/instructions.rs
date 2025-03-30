@@ -1,7 +1,4 @@
-use std::{
-    error,
-    fmt::{self, Display, Formatter, UpperHex},
-};
+use std::fmt::{self, Display, Formatter, UpperHex};
 
 use crate::hardware::bus::Bus;
 
@@ -286,15 +283,20 @@ pub fn cpy(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
     bus.cpu.set_negative(res < 0);
 }
 
-pub fn dec(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
+pub fn dec(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
     // Decrement Memory
     log_instruct("DEC", &address_mode, operand);
     bus.increment_pc(&address_mode);
-    let (val, address) = bus.read_address_with_mode(address_mode, operand as u16);
+    let is_accumulator = address_mode == AddressMode::Accumulator;
+    let (val, address) = bus.read_address_with_mode(address_mode, operand);
     let res = val.wrapping_sub(1);
     bus.cpu.set_negative(res & 0x80 != 0);
     bus.cpu.set_zero(res == 0);
-    bus.write(address, res as u8);
+    if is_accumulator {
+        bus.cpu.a = res;
+    } else {
+        bus.write(address, res as u8);
+    }
 }
 
 pub fn dex(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
@@ -341,11 +343,16 @@ pub fn inc(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
     // Increment Memory
     log_instruct("INC", &address_mode, operand);
     bus.increment_pc(&address_mode);
+    let is_accumulator = address_mode == AddressMode::Accumulator;
     let (val, address) = bus.read_address_with_mode(address_mode, operand as u16);
     let res = val.wrapping_add(1);
     bus.cpu.set_zero(res == 0);
     bus.cpu.set_negative(res & 0x80 != 0);
-    bus.write(address, res);
+    if is_accumulator {
+        bus.cpu.a = res;
+    } else {
+        bus.write(address, res);
+    }
 }
 
 pub fn inx(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
@@ -376,4 +383,287 @@ pub fn jmp(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
     bus.increment_pc(&address_mode);
     let (_, address) = bus.read_address_with_mode(address_mode, operand);
     bus.cpu.set_counter(address);
+}
+
+pub fn jsr(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Jump to Subroutine
+    log_instruct("JSR", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (_, address) = bus.read_address_with_mode(address_mode, operand);
+    bus.stack_push_word(bus.cpu.get_counter() - 1);
+    bus.cpu.set_counter(address);
+}
+
+pub fn lda(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
+    // Load Accumulator
+    log_instruct("LDA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (val, _) = bus.read_address_with_mode(address_mode, operand as u16);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+    bus.cpu.set(Registers::A, val);
+}
+
+pub fn ldx(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
+    // Load X Register
+    log_instruct("LDX", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (val, _) = bus.read_address_with_mode(address_mode, operand as u16);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+    bus.cpu.set(Registers::X, val);
+}
+
+pub fn ldy(bus: &mut Bus, address_mode: AddressMode, operand: u8) {
+    // Load Y Register
+    log_instruct("LDY", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (val, _) = bus.read_address_with_mode(address_mode, operand as u16);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+    bus.cpu.set(Registers::Y, val);
+}
+
+pub fn lsr(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Logical Shift Right
+    log_instruct("LSR", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let is_accumulator = address_mode == AddressMode::Accumulator;
+    let (val, address) = bus.read_address_with_mode(address_mode, operand as u16);
+    let res = val >> 1;
+    bus.cpu.set_carry(val & 0x01 != 0);
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_negative(false);
+    if is_accumulator {
+        bus.cpu.set(Registers::A, res);
+    } else {
+        bus.write(address, res);
+    }
+}
+
+pub fn nop(bus: &mut Bus, address_mode: AddressMode) {
+    // No Operation
+    log_instruct("NOP", &address_mode, 0x00);
+    bus.increment_pc(&address_mode);
+}
+
+pub fn ora(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Logical Inclusive OR
+    log_instruct("ORA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (val, _) = bus.read_address_with_mode(address_mode, operand);
+    let res = bus.cpu.get(Registers::A) | val;
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_negative(res & 0x80 != 0);
+    bus.cpu.set(Registers::A, res);
+}
+
+pub fn pha(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Push Accumulator
+    log_instruct("PHA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    bus.stack_push(bus.cpu.get(Registers::A));
+}
+
+pub fn php(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Push Processor Status
+    log_instruct("PHP", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    bus.stack_push(bus.cpu.get(Registers::P));
+}
+
+pub fn pla(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Pull Accumulator
+    log_instruct("PLA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.stack_pull();
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+    bus.cpu.set(Registers::A, val);
+}
+
+pub fn plp(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Pull Processor Status
+    log_instruct("PLP", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let mut val = bus.stack_pull();
+    let interrupt_disable = val & 0b0000_0100;
+    // TODO: Add check in next cpu cycle
+    bus.cpu.delayed_interrupt = Some(interrupt_disable != 0);
+    val = (val & 0b1111_1011) | (bus.cpu.get(Registers::P) & 0b0000_0100);
+    bus.cpu.set(Registers::P, val);
+}
+
+pub fn rol(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Rotate Left
+    log_instruct("ROL", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let is_accumulator = address_mode == AddressMode::Accumulator;
+    let (val, address) = bus.read_address_with_mode(address_mode, operand);
+    let res = (val << 1) | bus.cpu.get_carry();
+    bus.cpu.set_carry(val & 0x80 != 0);
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_negative(res & 0x80 != 0);
+    if is_accumulator {
+        bus.cpu.set(Registers::A, res);
+    } else {
+        bus.write(address, res);
+    }
+}
+
+pub fn ror(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Rotate Right
+    log_instruct("ROR", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let is_accumulator = address_mode == AddressMode::Accumulator;
+    let (val, address) = bus.read_address_with_mode(address_mode, operand);
+    let res = (val >> 1) | (bus.cpu.get_carry() << 7);
+    bus.cpu.set_carry(val & 0x01 != 0);
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_negative(res & 0x80 != 0);
+    if is_accumulator {
+        bus.cpu.set(Registers::A, res);
+    } else {
+        bus.write(address, res);
+    }
+}
+
+pub fn rti(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Return from Interrupt
+    log_instruct("RTI", &address_mode, operand);
+    let flags = bus.stack_pull();
+    bus.cpu.set(Registers::P, flags);
+    let pc = bus.stack_pull_word();
+    bus.cpu.set_counter(pc);
+}
+
+pub fn rts(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Return from Subroutine
+    log_instruct("RTS", &address_mode, operand);
+    let pc = bus.stack_pull_word();
+    bus.cpu.set_counter(pc + 1);
+}
+
+pub fn sbc(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Subtract with Carry
+    log_instruct("SBC", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (val, _) = bus.read_address_with_mode(address_mode, operand);
+    let acc = bus.cpu.get(Registers::A);
+    let carry = bus.cpu.get_carry();
+    let result = acc as i16 + !val as i16 + carry as i16;
+    bus.cpu.set_carry(result > 0xFF);
+    bus.cpu.set_zero(result & 0xFF == 0);
+    bus.cpu
+        .set_overflow(((acc ^ result as u8) & (!val as u8 ^ result as u8) & 0x80) != 0);
+    bus.cpu.set_negative(result & 0x80 != 0);
+    bus.cpu.set(Registers::A, result as u8);
+}
+
+pub fn sec(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Set Carry Flag
+    log_instruct("SEC", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    bus.cpu.set_carry(true);
+}
+
+pub fn sed(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Set Decimal Flag
+    log_instruct("SED", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    bus.cpu.set_decimal(true);
+}
+
+pub fn sei(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Set Interrupt Disable
+    log_instruct("SEI", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    bus.cpu.set_interrupt_disable(true);
+}
+
+pub fn sta(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Store Accumulator
+    log_instruct("STA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (_, address) = bus.read_address_with_mode(address_mode, operand);
+    bus.write(address, bus.cpu.get(Registers::A));
+}
+
+pub fn stx(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Store X Register
+    log_instruct("STX", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (_, address) = bus.read_address_with_mode(address_mode, operand);
+    bus.write(address, bus.cpu.get(Registers::X));
+}
+
+pub fn sty(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Store Y Register
+    log_instruct("STY", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let (_, address) = bus.read_address_with_mode(address_mode, operand);
+    bus.write(address, bus.cpu.get(Registers::Y));
+}
+
+pub fn tax(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Transfer Accumulator to X
+    log_instruct("TAX", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.cpu.get(Registers::A);
+    bus.cpu.set(Registers::X, val);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+}
+
+pub fn tay(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Transfer Accumulator to Y
+    log_instruct("TAY", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.cpu.get(Registers::A);
+    bus.cpu.set(Registers::Y, val);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+}
+
+pub fn tsx(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Transfer Stack Pointer to X
+    log_instruct("TSX", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.cpu.get(Registers::S);
+    bus.cpu.set(Registers::X, val);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+}
+
+pub fn txa(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Transfer X to Accumulator
+    log_instruct("TXA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.cpu.get(Registers::X);
+    bus.cpu.set(Registers::A, val);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+}
+
+pub fn txs(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Transfer X to Stack Pointer
+    log_instruct("TXS", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.cpu.get(Registers::X);
+    bus.cpu.set(Registers::S, val);
+}
+
+pub fn tya(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    // Transfer Y to Accumulator
+    log_instruct("TYA", &address_mode, operand);
+    bus.increment_pc(&address_mode);
+    let val = bus.cpu.get(Registers::Y);
+    bus.cpu.set(Registers::A, val);
+    bus.cpu.set_zero(val == 0);
+    bus.cpu.set_negative(val & 0x80 != 0);
+}
+
+pub fn invalid(bus: &mut Bus, address_mode: AddressMode, operand: u16) {
+    log_instruct("INVALID", &address_mode, operand);
+    panic!("Invalid instruction!");
 }
