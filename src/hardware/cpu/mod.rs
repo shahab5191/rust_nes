@@ -1,4 +1,5 @@
 pub mod instructions;
+pub mod opcode;
 
 #[derive(Debug)]
 pub enum Registers {
@@ -16,7 +17,7 @@ pub struct CPU {
     s: u8,
     p: u8,
     pc: u16,
-    delayed_interrupt: Option<bool>,
+    pub delayed_interrupt: Option<bool>,
 }
 
 impl CPU {

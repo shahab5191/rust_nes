@@ -2,6 +2,11 @@ use super::{
     cpu::{CPU, Registers, instructions::AddressMode},
     memory::Memory,
 };
+pub struct ReadAddressWithModeResult {
+    pub value: u8,
+    pub address: u16,
+    pub cycles: u8,
+}
 
 pub struct Bus {
     pub cpu: CPU,
@@ -21,8 +26,8 @@ impl Bus {
         let pc = self.cpu.get_counter();
         let value = match address_mode {
             AddressMode::Immidiate => 2,
-            AddressMode::IndexedIndirect => 2,
-            AddressMode::IndirectIndexed => 2,
+            AddressMode::IndirectX => 2,
+            AddressMode::IndirectY => 2,
             AddressMode::Indirect => 3,
             AddressMode::ZeroPage => 2,
             AddressMode::ZeroPageX => 2,
@@ -46,6 +51,39 @@ impl Bus {
 
     pub fn read(&self, address: u16) -> u8 {
         self.memory.read(address)
+    }
+
+    pub fn read_instruct(&self) -> u8 {
+        let pc = self.cpu.get_counter();
+        self.memory.read(pc)
+    }
+
+    pub fn read_next(&self) -> u8 {
+        let pc = self.cpu.get_counter();
+        self.memory.read(pc.wrapping_add(1))
+    }
+
+    pub fn read_word(&self, address: u16) -> u16 {
+        let low_byte = self.read(address);
+        let high_byte = self.read(address.wrapping_add(1));
+        ((high_byte as u16) << 8) + (low_byte as u16)
+    }
+
+    pub fn read_word_buggy(&self, address: u16) -> u16 {
+        let low = self.read(address);
+        let high = if address & 0x00FF == 0x00FF {
+            println!("Buggy read at address {:#04x}", &address);
+            println!("Reading high byte from address {:#04x}", address & 0xFF00);
+            self.read(address & 0xFF00)
+        } else {
+            self.read(address.wrapping_add(1))
+        };
+        ((high as u16) << 8) | (low as u16)
+    }
+
+    pub fn read_next_word(&self) -> u16 {
+        let pc = self.cpu.get_counter();
+        self.read_word(pc.wrapping_add(1))
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
@@ -77,50 +115,148 @@ impl Bus {
         (high_byte as u16) << 8 + (low_byte as u16)
     }
 
-    pub fn read_address_with_mode(&self, address_mode: AddressMode, operand: u16) -> (u8, u16) {
+    pub fn read_address_with_mode(&self, address_mode: &AddressMode) -> ReadAddressWithModeResult {
+        "
+        Reads the value from memory based on the address mode and operand.
+        args:
+            address_mode: The addressing mode to use for reading.
+            operand: The operand to use in conjunction with the address mode.
+        returns:
+            A tuple containing the value read from memory and the address it was read from.
+        ";
         match address_mode {
-            AddressMode::Implicit => (0, 0),
-            AddressMode::Immidiate => (operand as u8, 0),
-            AddressMode::Relative => (0, 0),
-            AddressMode::Accumulator => (self.cpu.get(Registers::A), 0),
+            AddressMode::Implicit => {
+                return ReadAddressWithModeResult {
+                    value: self.cpu.get(Registers::A),
+                    address: 0,
+                    cycles: 0,
+                };
+            }
+            AddressMode::Immidiate => ReadAddressWithModeResult {
+                value: self.read_next(),
+                address: 0,
+                cycles: 0,
+            },
+            AddressMode::Relative => {
+                let relative = self.read_next() as i32;
+                let pc = (self.cpu.get_counter() as i32).wrapping_add(relative);
+                ReadAddressWithModeResult {
+                    value: 0,
+                    address: pc as u16,
+                    cycles: 0,
+                }
+            }
+
+            AddressMode::Accumulator => ReadAddressWithModeResult {
+                value: self.cpu.get(Registers::A),
+                address: 0,
+                cycles: 0,
+            },
             AddressMode::Indirect => {
-                let low_byte = self.memory.read(operand);
-                let high_byte = self.memory.read(operand + 1);
-                let address: u16 = ((high_byte as u16) << 8) + (low_byte as u16);
-                (self.read(address), address)
+                let pointer: u16 = self.read_next_word();
+                ReadAddressWithModeResult {
+                    value: 0,
+                    address: self.read_word_buggy(pointer),
+                    cycles: 0,
+                }
             }
-            AddressMode::IndexedIndirect => {
-                let zero_page_pointer = (operand + (self.cpu.get(Registers::X) as u16)) % 256;
-                let low_byte = self.memory.read(zero_page_pointer);
-                let high_byte = self.memory.read(zero_page_pointer + 1);
+            AddressMode::IndirectX => {
+                let operand = self.read_next();
+                let zero_page_pointer = operand.wrapping_add(self.cpu.get(Registers::X));
+                // We don't use read_word because we have to wrap into zero page
+                // when reading high byte. read_word first converts the address to
+                // u16 then adds 1 to it, which is not what we want here.
+                let low_byte = self.read(zero_page_pointer as u16);
+                let high_byte = self.read(zero_page_pointer.wrapping_add(1) as u16);
                 let address: u16 = (high_byte as u16) << 8 + (low_byte as u16);
-                (self.read(address), address)
+                ReadAddressWithModeResult {
+                    value: self.read(address),
+                    address,
+                    cycles: 0,
+                }
             }
-            AddressMode::IndirectIndexed => {
-                let zero_page_pointer = operand % 256;
-                let low_byte = self.memory.read(zero_page_pointer);
-                let high_byte = self.memory.read(zero_page_pointer + 1);
-                let address = (high_byte as u16)
-                    << 8 + (low_byte as u16) + (self.cpu.get(Registers::Y) as u16);
-                (self.read(address), address)
+            AddressMode::IndirectY => {
+                let operand = self.read_next() as u16;
+                let zero_page_pointer = self.read_word(operand);
+                let address = zero_page_pointer.wrapping_add(self.cpu.get(Registers::Y) as u16);
+                let crossed_page = (zero_page_pointer & 0xFF00) != (address & 0xFF00);
+                let mut cycles = 0;
+                if crossed_page {
+                    println!("Crossed page boundary in indirect indexed mode");
+                    cycles = 1;
+                }
+                ReadAddressWithModeResult {
+                    value: self.read(address),
+                    address,
+                    cycles,
+                }
             }
-            AddressMode::Absolute => (self.memory.read(operand), operand),
+            AddressMode::Absolute => {
+                let address = self.read_next_word();
+                ReadAddressWithModeResult {
+                    value: self.memory.read(address),
+                    address,
+                    cycles: 0,
+                }
+            }
             AddressMode::AbsoluteX => {
-                let address = operand + (self.cpu.get(Registers::X) as u16);
-                (self.memory.read(address), address)
+                let operand = self.read_next_word();
+                let address = operand.wrapping_add(self.cpu.get(Registers::X) as u16);
+                let crossed_page = (operand & 0xFF00) != (address & 0xFF00);
+                let mut cycles = 0;
+                if crossed_page {
+                    println!("Crossed page boundary in absolute X mode");
+                    cycles = 1;
+                }
+                ReadAddressWithModeResult {
+                    value: self.read(address),
+                    address,
+                    cycles,
+                }
             }
             AddressMode::AbsoluteY => {
-                let address = operand + (self.cpu.get(Registers::Y) as u16);
-                (self.memory.read(address), address)
+                let operand = self.read_next_word();
+                let address = operand.wrapping_add(self.cpu.get(Registers::Y) as u16);
+                let crossed_page = (operand & 0xFF00) != (address & 0xFF00);
+                let mut cycles = 0;
+                if crossed_page {
+                    println!("Crossed page boundary in absolute Y mode");
+                    cycles = 1;
+                }
+                ReadAddressWithModeResult {
+                    value: self.memory.read(address),
+                    address,
+                    cycles,
+                }
             }
-            AddressMode::ZeroPage => (self.memory.read(operand), operand),
+            AddressMode::ZeroPage => {
+                let address = self.read_next() as u16;
+                println!("Zero page address: {:#04x}", address);
+                let value = self.read(address);
+                println!("Zero page value: {:#04x}", value);
+                ReadAddressWithModeResult {
+                    value,
+                    address,
+                    cycles: 0,
+                }
+            }
             AddressMode::ZeroPageX => {
-                let address = (operand + (self.cpu.get(Registers::X) as u16)) % 256;
-                (self.read(address), address)
+                let operand = self.read_next() as u16;
+                let address = operand.wrapping_add(self.cpu.get(Registers::X) as u16);
+                ReadAddressWithModeResult {
+                    value: self.read(address),
+                    address,
+                    cycles: 0,
+                }
             }
             AddressMode::ZeroPageY => {
-                let address = (operand + (self.cpu.get(Registers::Y) as u16)) % 256;
-                (self.read(address), address)
+                let operand = self.read_next() as u16;
+                let address = operand.wrapping_add(self.cpu.get(Registers::Y) as u16);
+                ReadAddressWithModeResult {
+                    value: self.read(address),
+                    address,
+                    cycles: 0,
+                }
             }
         }
     }
