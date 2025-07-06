@@ -1,11 +1,19 @@
-#[derive(Debug, Clone, Copy)]
+use std::collections::HashMap;
+
+use super::cpu::{instructions::AddressMode, opcode};
+
+#[derive(Debug, Clone)]
 pub struct Memory {
     mem: [u8; 65536],
+    assembly: HashMap<u16, String>,
 }
 
 impl Memory {
     pub fn new() -> Self {
-        let mut temp = Memory { mem: [0; 65536] };
+        let mut temp = Memory {
+            mem: [0; 65536],
+            assembly: HashMap::new(),
+        };
         temp.mem[0] = 0b00000100;
         temp.mem[1] = 0b00000000;
         temp.mem[2] = 0b00000000;
@@ -23,9 +31,75 @@ impl Memory {
         value
     }
 
+    pub fn read_word(&self, address: u16) -> u16 {
+        let low = self.read(address);
+        let high = self.read(address + 1);
+        ((high as u16) << 8) | (low as u16)
+    }
+
+    fn get_parameters(&self, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
+        match addr_mode {
+            AddressMode::Immidiate => (format!("#${:02X}", self.read(addr + 1)), 2),
+            AddressMode::ZeroPage => (format!("${:02X}", self.read(addr + 1)), 2),
+            AddressMode::ZeroPageX => (format!("${:02X}, X", self.read(addr + 1)), 2),
+            AddressMode::ZeroPageY => (format!("${:02X}, Y", self.read(addr + 1)), 2),
+            AddressMode::Absolute => (format!("${:04X}", self.read_word(addr + 1)), 3),
+            AddressMode::AbsoluteX => (format!("${:04X}, X", self.read_word(addr + 1)), 3),
+            AddressMode::AbsoluteY => (format!("${:04X}, Y", self.read_word(addr + 1)), 3),
+            AddressMode::Indirect => (format!("(${:04X})", self.read_word(addr + 1)), 3),
+            AddressMode::IndirectX => (format!("(${:02X}, X)", self.read(addr + 1)), 2),
+            AddressMode::IndirectY => (format!("(${:02X}), Y", self.read(addr + 1)), 2),
+            AddressMode::Relative => (format!("${:02X}", self.read(addr + 1)), 2),
+            AddressMode::Implicit => (String::new(), 1),
+            AddressMode::Accumulator => (String::from("A"), 1),
+        }
+    }
+
+    fn create_disassembled_line(&self, address: u16) -> String {
+        let opcode = self.mem[address as usize];
+        let instruction = opcode::get_instruction(opcode);
+        let disassembled;
+        if let Some(instruction) = instruction {
+            let (param, _) = self.get_parameters(&instruction.address_mode, address);
+            disassembled = format!("{:04X}: {:02X} {}", address, opcode, param);
+        } else {
+            disassembled = format!("{:04X}: {:02X} <unknown>", address, opcode);
+        }
+        disassembled
+    }
+
+    fn update_assembly(&mut self, address: u16) {
+        if self.assembly.contains_key(&address) {
+            self.assembly.remove(&address);
+            self.assembly
+                .insert(address, self.create_disassembled_line(address));
+        }
+    }
+
+    pub fn set_assembly(&mut self, assembly: HashMap<u16, String>) {
+        self.assembly = assembly;
+    }
+
+    pub fn get_assembly(&self, address: u16) -> Option<String> {
+        self.assembly.get(&address).cloned()
+    }
+
+    pub fn insert_assembly(&mut self, address: u16) {
+        if self.assembly.contains_key(&address) {
+            self.assembly.remove(&address);
+        }
+        self.assembly
+            .insert(address, self.create_disassembled_line(address));
+    }
+
+    pub fn assembly_contains_key(&self, address: u16) -> bool {
+        self.assembly.contains_key(&address)
+    }
+
     pub fn write(&mut self, address: u16, value: u8) {
         self.mem[address as usize] = value;
         println!("Write: {0:08b}: {1:08b}", address, value);
+        self.update_assembly(address);
     }
 
     pub fn dump_zero_page(&self) {

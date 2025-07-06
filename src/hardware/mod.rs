@@ -85,8 +85,6 @@ impl Hardware {
 
     pub fn get_assembly(&self, count: u16) -> (Vec<String>, u16) {
         let pc: u16 = self.bus.cpu.get_counter();
-        let start: u16 = i32::max(0, pc as i32 - (count / 2) as i32) as u16;
-        let end = u16::min(start + count, 0x1FFF);
         let mut asm: Vec<String> = Vec::new();
         let mut line: u16 = pc;
         while asm.len() < count as usize / 2 {
@@ -95,9 +93,8 @@ impl Hardware {
             }
             line -= 1;
 
-            if self.bus.assembly.contains_key(&line) {
-                println!("Found assembly for line: {:#04x}", line);
-                asm.insert(0, self.bus.assembly[&line].clone());
+            if self.bus.memory.assembly_contains_key(line) {
+                asm.insert(0, self.bus.memory.get_assembly(line).unwrap());
             }
         }
         line = pc;
@@ -106,9 +103,8 @@ impl Hardware {
             if line > 0x1FFF {
                 break;
             }
-            if self.bus.assembly.contains_key(&line) {
-                println!("Found assembly for line: {:#04x}", line);
-                asm.push(self.bus.assembly[&line].clone());
+            if self.bus.memory.assembly_contains_key(line) {
+                asm.push(self.bus.memory.get_assembly(line).unwrap());
             }
             line += 1;
         }
@@ -130,7 +126,7 @@ impl Hardware {
                 pc += 1; // Increment by 1 for unknown opcodes
             }
         }
-        self.bus.assembly = disassembled;
+        self.bus.memory.set_assembly(disassembled);
     }
 
     fn get_parameters(bus: &Bus, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
