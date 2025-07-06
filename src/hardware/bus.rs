@@ -8,6 +8,7 @@ pub struct ReadAddressWithModeResult {
     pub cycles: u8,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct Bus {
     pub cpu: CPU,
     pub memory: Memory,

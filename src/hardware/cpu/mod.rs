@@ -10,6 +10,7 @@ pub enum Registers {
     P,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct CPU {
     a: u8,
     x: u8,

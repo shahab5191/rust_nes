@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Memory {
     mem: [u8; 65536],
 }
@@ -11,6 +11,10 @@ impl Memory {
         temp.mem[2] = 0b00000000;
         temp.mem[3] = 0b00000111;
         temp
+    }
+
+    pub fn silent_read(&self, address: u16) -> u8 {
+        self.mem[address as usize]
     }
 
     pub fn read(&self, address: u16) -> u8 {
@@ -38,5 +42,9 @@ impl Memory {
                 self.mem[(i + 0x100) as usize]
             )
         }
+    }
+
+    pub fn get_memory_slice(&self) -> &[u8] {
+        &self.mem
     }
 }

@@ -1,4 +1,5 @@
 mod hardware;
+mod ui;
 
 fn main() {
     let mut device = hardware::Hardware::new();
@@ -13,5 +14,6 @@ fn main() {
         0x00, // jMP low byte
         0x00, // jMP high byte
     ]);
-    device.run();
+    let mut emulator_ui = ui::UI::new(device);
+    emulator_ui.run();
 }

@@ -1,0 +1,8 @@
+.current-instruction {
+	background-color: blue;
+	color: white;
+}
+.normal-instruction {
+	background-color: white;
+	color: black;
+}
