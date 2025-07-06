@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::{
     cpu::{CPU, Registers, instructions::AddressMode},
     memory::Memory,
@@ -8,10 +10,11 @@ pub struct ReadAddressWithModeResult {
     pub cycles: u8,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Bus {
     pub cpu: CPU,
     pub memory: Memory,
+    pub assembly: HashMap<u16, String>,
 }
 
 impl Bus {
@@ -19,6 +22,7 @@ impl Bus {
         let bus = Bus {
             cpu: CPU::new(),
             memory: Memory::new(),
+            assembly: HashMap::new(),
         };
         return bus;
     }

@@ -45,6 +45,8 @@ impl UI {
         if let Some(main_window) = &self.main_window {
             let main_window = RefCell::new(main_window.clone());
             timeout_add_local(std::time::Duration::from_millis(2000), move || {
+                let (asm, line) = emulator.borrow().get_assembly(20);
+                UI::build_instruction_list(&main_window, asm, line);
                 if let Err(err) = emulator.borrow_mut().tick() {
                     eprintln!("Error during tick: {}", err);
                     main_window
@@ -57,8 +59,6 @@ impl UI {
                         .borrow_mut()
                         .memory_buffer
                         .set_text(emulator.borrow().get_memory_dump(0, 2048).as_str());
-                    let (asm, line) = emulator.borrow().get_assembly(20);
-                    UI::build_instruction_list(&main_window, asm, line);
                     ControlFlow::Continue
                 }
             });

@@ -1,8 +1,14 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::hardware::bus::Bus;
+use crate::hardware::{
+    Hardware,
+    bus::{Bus, ReadAddressWithModeResult},
+};
 
-use super::Registers;
+use super::{
+    Registers,
+    opcode::{self, Instruction},
+};
 
 #[derive(PartialEq, Eq)]
 pub enum AddressMode {
@@ -39,6 +45,22 @@ impl Display for AddressMode {
             AddressMode::IndirectY => write!(f, "IndY"),
         }
     }
+}
+
+fn update_assembly(bus: &mut Bus, val: &ReadAddressWithModeResult) {
+    let opcode = bus.memory.silent_read(val.address);
+    let instruction = opcode::get_instruction(opcode);
+    let diassmembled;
+    if let Some(instr) = instruction {
+        let (param, _) = Hardware::get_parameters(&bus, &instr.address_mode, val.address);
+        diassmembled = format!("{:04X}: {:02X} {}", val.address, opcode, param);
+    } else {
+        diassmembled = format!("{:04X}: {:02X} UNKNOWN", val.address, opcode);
+    }
+    if bus.assembly.contains_key(&val.address) {
+        bus.assembly.remove(&val.address);
+    }
+    bus.assembly.insert(val.address, diassmembled);
 }
 
 fn log_instruct(instruct: &str, address_mode: &AddressMode) {
@@ -163,8 +185,10 @@ pub fn beq(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
+        update_assembly(bus, &val);
+    } else {
+        bus.increment_pc(&address_mode);
     }
-    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -197,8 +221,10 @@ pub fn bmi(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
+        update_assembly(bus, &val);
+    } else {
+        bus.increment_pc(&address_mode);
     }
-    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -214,8 +240,10 @@ pub fn bne(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
+        update_assembly(bus, &val);
+    } else {
+        bus.increment_pc(&address_mode);
     }
-    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -231,8 +259,11 @@ pub fn bpl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
+        bus.increment_pc(&address_mode);
+        update_assembly(bus, &val);
+    } else {
+        bus.increment_pc(&address_mode);
     }
-    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -262,8 +293,10 @@ pub fn bvc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
+        update_assembly(bus, &val);
+    } else {
+        bus.increment_pc(&address_mode);
     }
-    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -279,8 +312,10 @@ pub fn bvs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
+        update_assembly(bus, &val);
+    } else {
+        bus.increment_pc(&address_mode);
     }
-    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -402,6 +437,9 @@ pub fn dec(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         bus.cpu.a = res;
     } else {
         bus.write(val.address, res as u8);
+        if bus.assembly.contains_key(&val.address) {
+            update_assembly(bus, &val);
+        }
     }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
@@ -480,6 +518,9 @@ pub fn inc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         bus.cpu.a = res;
     } else {
         bus.write(val.address, res);
+        if bus.assembly.contains_key(&val.address) {
+            update_assembly(bus, &val);
+        }
     }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
@@ -522,6 +563,7 @@ pub fn jmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     let val = bus.read_address_with_mode(&address_mode);
     bus.cpu.set_counter(val.address);
     bus.increment_pc(&address_mode);
+    update_assembly(bus, &val);
     match address_mode {
         AddressMode::Absolute => 3,
         AddressMode::Indirect => 5,
@@ -612,6 +654,9 @@ pub fn lsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         bus.cpu.set(Registers::A, res);
     } else {
         bus.write(val.address, res);
+        if bus.assembly.contains_key(&val.address) {
+            update_assembly(bus, &val);
+        }
     }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
@@ -707,6 +752,9 @@ pub fn rol(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         bus.cpu.set(Registers::A, res);
     } else {
         bus.write(val.address, res);
+        if bus.assembly.contains_key(&val.address) {
+            update_assembly(bus, &val);
+        }
     }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
@@ -733,6 +781,9 @@ pub fn ror(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         bus.cpu.set(Registers::A, res);
     } else {
         bus.write(val.address, res);
+        if bus.assembly.contains_key(&val.address) {
+            update_assembly(bus, &val);
+        }
     }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
@@ -821,6 +872,9 @@ pub fn sta(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("STA", &address_mode);
     let val = bus.read_address_with_mode(&address_mode);
     bus.write(val.address, bus.cpu.get(Registers::A));
+    if bus.assembly.contains_key(&val.address) {
+        update_assembly(bus, &val);
+    }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::ZeroPage => 3,
@@ -840,6 +894,9 @@ pub fn stx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("STX", &address_mode);
     let val = bus.read_address_with_mode(&address_mode);
     bus.write(val.address, bus.cpu.get(Registers::X));
+    if bus.assembly.contains_key(&val.address) {
+        update_assembly(bus, &val);
+    }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::ZeroPage => 3,
@@ -855,6 +912,9 @@ pub fn sty(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("STY", &address_mode);
     let val = bus.read_address_with_mode(&address_mode);
     bus.write(val.address, bus.cpu.get(Registers::Y));
+    if bus.assembly.contains_key(&val.address) {
+        update_assembly(bus, &val);
+    }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::ZeroPage => 3,

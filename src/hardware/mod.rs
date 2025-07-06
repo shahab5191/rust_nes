@@ -2,32 +2,22 @@ mod bus;
 mod cpu;
 mod memory;
 use Result;
-use cpu::instructions::{self, AddressMode};
+use bus::Bus;
+use cpu::instructions::AddressMode;
 use cpu::opcode;
+use std::collections::HashMap;
 use std::io;
 
 #[derive(Debug, Clone)]
 pub struct Hardware {
     bus: bus::Bus,
-    assembly: Vec<String>,
 }
 
 impl Hardware {
     pub fn new() -> Self {
         Self {
             bus: bus::Bus::new(),
-            assembly: Vec::new(),
         }
-    }
-
-    pub fn test_hardware(mut self) {
-        self.bus.memory.write(0x00, 0x04);
-        self.bus.memory.write(0x01, 0xff);
-        self.bus.memory.write(0x02, 0x00);
-        self.bus.cpu.set_counter(0x00);
-        instructions::jmp(&mut self.bus, AddressMode::Indirect);
-        self.bus.cpu.dump_registers();
-        // self.bus.memory.dump_zero_page();
     }
 
     pub fn load_program(&mut self, program: Vec<u8>) {
@@ -94,44 +84,68 @@ impl Hardware {
     }
 
     pub fn get_assembly(&self, count: u16) -> (Vec<String>, u16) {
-        let line: u16 = self.bus.cpu.get_counter();
-        let start: u16 = i32::max(0, line as i32 - (count / 2) as i32) as u16;
+        let pc: u16 = self.bus.cpu.get_counter();
+        let start: u16 = i32::max(0, pc as i32 - (count / 2) as i32) as u16;
         let end = u16::min(start + count, 0x1FFF);
-        let asm = self.assembly[start as usize..end as usize].to_vec();
-        (asm, line)
+        let mut asm: Vec<String> = Vec::new();
+        let mut line: u16 = pc;
+        while asm.len() < count as usize / 2 {
+            if line == 0 {
+                break;
+            }
+            line -= 1;
+
+            if self.bus.assembly.contains_key(&line) {
+                println!("Found assembly for line: {:#04x}", line);
+                asm.insert(0, self.bus.assembly[&line].clone());
+            }
+        }
+        line = pc;
+        let current_line = asm.len() as u16;
+        while asm.len() < count as usize {
+            if line > 0x1FFF {
+                break;
+            }
+            if self.bus.assembly.contains_key(&line) {
+                println!("Found assembly for line: {:#04x}", line);
+                asm.push(self.bus.assembly[&line].clone());
+            }
+            line += 1;
+        }
+        (asm, current_line)
     }
 
     fn disassemble(&mut self) {
-        let mut disassembled: Vec<String> = Vec::new();
+        let mut disassembled: HashMap<u16, String> = HashMap::new();
         let mut pc: u16 = 0;
         while pc < 0x1FFF {
             let opcode = self.bus.memory.silent_read(pc);
             let instruction = opcode::get_instruction(opcode);
             if let Some(instr) = instruction {
-                let (param, size) = self.get_parameters(&instr.address_mode, pc);
-                disassembled.push(format!("{:04X}: {:02X} {}\n", pc, opcode, param));
+                let (param, size) = Hardware::get_parameters(&self.bus, &instr.address_mode, pc);
+                disassembled.insert(pc, format!("{:04X}: {:02X} {}\n", pc, opcode, param));
                 pc += size;
             } else {
-                disassembled.push(format!("{:04X}: {:02X} UNKNOWN\n", pc, opcode));
+                disassembled.insert(pc, format!("{:04X}: {:02X} UNKNOWN\n", pc, opcode));
                 pc += 1; // Increment by 1 for unknown opcodes
             }
         }
-        self.assembly = disassembled;
+        self.bus.assembly = disassembled;
     }
 
-    fn get_parameters(&self, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
+    fn get_parameters(bus: &Bus, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
         match addr_mode {
-            AddressMode::Immidiate => (format!("#${:02X}", self.bus.read(addr + 1)), 2),
-            AddressMode::ZeroPage => (format!("${:02X}", self.bus.read(addr + 1)), 2),
-            AddressMode::ZeroPageX => (format!("${:02X}, X", self.bus.read(addr + 1)), 2),
-            AddressMode::ZeroPageY => (format!("${:02X}, Y", self.bus.read(addr + 1)), 2),
-            AddressMode::Absolute => (format!("${:04X}", self.bus.read_word(addr + 1)), 3),
-            AddressMode::AbsoluteX => (format!("${:04X}, X", self.bus.read_word(addr + 1)), 3),
-            AddressMode::AbsoluteY => (format!("${:04X}, Y", self.bus.read_word(addr + 1)), 3),
-            AddressMode::Indirect => (format!("(${:04X})", self.bus.read_word(addr + 1)), 3),
-            AddressMode::IndirectX => (format!("(${:02X}, X)", self.bus.read(addr + 1)), 2),
-            AddressMode::IndirectY => (format!("(${:02X}), Y", self.bus.read(addr + 1)), 2),
-            AddressMode::Relative => (format!("${:02X}", self.bus.read(addr + 1)), 2),
+            AddressMode::Immidiate => (format!("#${:02X}", bus.read(addr + 1)), 2),
+            AddressMode::ZeroPage => (format!("${:02X}", bus.read(addr + 1)), 2),
+            AddressMode::ZeroPageX => (format!("${:02X}, X", bus.read(addr + 1)), 2),
+            AddressMode::ZeroPageY => (format!("${:02X}, Y", bus.read(addr + 1)), 2),
+            AddressMode::Absolute => (format!("${:04X}", bus.read_word(addr + 1)), 3),
+            AddressMode::AbsoluteX => (format!("${:04X}, X", bus.read_word(addr + 1)), 3),
+            AddressMode::AbsoluteY => (format!("${:04X}, Y", bus.read_word(addr + 1)), 3),
+            AddressMode::Indirect => (format!("(${:04X})", bus.read_word(addr + 1)), 3),
+            AddressMode::IndirectX => (format!("(${:02X}, X)", bus.read(addr + 1)), 2),
+            AddressMode::IndirectY => (format!("(${:02X}), Y", bus.read(addr + 1)), 2),
+            AddressMode::Relative => (format!("${:02X}", bus.read(addr + 1)), 2),
             AddressMode::Implicit => (String::new(), 1),
             AddressMode::Accumulator => (String::from("A"), 1),
         }
