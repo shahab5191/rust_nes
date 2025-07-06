@@ -26,9 +26,17 @@ impl Memory {
     }
 
     pub fn read(&self, address: u16) -> u8 {
-        let value = self.mem[address as usize];
-        println!("Read: {0:08b}: {1:08b}", address, value);
-        value
+        // Handling address mirroring in NES
+        let address = if address < 0x2000 {
+            let real_address = address % 0x800;
+            let value = self.mem[real_address as usize];
+            println!("Read: {0:08b}: {1:08b}", address, value);
+            value
+        } else {
+            println!("Warning: Reading from non-ram address {:#04X}", address);
+            0
+        };
+        return address;
     }
 
     pub fn read_word(&self, address: u16) -> u16 {
@@ -61,7 +69,7 @@ impl Memory {
         let disassembled;
         if let Some(instruction) = instruction {
             let (param, _) = self.get_parameters(&instruction.address_mode, address);
-            disassembled = format!("{:04X}: {:02X} {}", address, opcode, param);
+            disassembled = format!("{:04X}: {} {}", address, instruction.name, param);
         } else {
             disassembled = format!("{:04X}: {:02X} <unknown>", address, opcode);
         }
@@ -71,6 +79,16 @@ impl Memory {
     fn update_assembly(&mut self, address: u16) {
         if self.assembly.contains_key(&address) {
             self.assembly.remove(&address);
+            let instruction = opcode::get_instruction(self.mem[address as usize]);
+            if let Some(instruction) = instruction {
+                let (_, size) = self.get_parameters(&instruction.address_mode, address);
+                for i in 1..size {
+                    let next_address = address.wrapping_add(i);
+                    if self.assembly.contains_key(&next_address) {
+                        self.assembly.remove(&next_address);
+                    }
+                }
+            }
             self.assembly
                 .insert(address, self.create_disassembled_line(address));
         }
@@ -97,25 +115,15 @@ impl Memory {
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
-        self.mem[address as usize] = value;
-        println!("Write: {0:08b}: {1:08b}", address, value);
-        self.update_assembly(address);
-    }
-
-    pub fn dump_zero_page(&self) {
-        for i in 0..255 {
-            println!("{0:08b}: {1:08b}", i, self.mem[i as usize])
-        }
-    }
-
-    pub fn dump_stack(&self) {
-        for i in 0..255 {
-            println!(
-                "{0:08b}: {1:08b}",
-                i + 0x100,
-                self.mem[(i + 0x100) as usize]
-            )
-        }
+        if address < 0x2000 {
+            let real_address = address % 0x800;
+            self.mem[real_address as usize] = value;
+            println!("Write: {0:08b}: {1:08b}", address, value);
+            self.update_assembly(real_address);
+        } else {
+            println!("Warning: Writing to non-ram address {:#04X}", address);
+            return;
+        };
     }
 
     pub fn get_memory_slice(&self) -> &[u8] {

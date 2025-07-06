@@ -16,7 +16,6 @@ struct MainWindow {
     label: Label,
     memory_buffer: gtk4::TextBuffer,
     instruction_list: gtk4::ListBox,
-    button: Button,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +43,7 @@ impl UI {
         let emulator = Rc::new(RefCell::new(self.emulator.clone()));
         if let Some(main_window) = &self.main_window {
             let main_window = RefCell::new(main_window.clone());
-            timeout_add_local(std::time::Duration::from_millis(2000), move || {
+            timeout_add_local(std::time::Duration::from_millis(1000), move || {
                 let (asm, line) = emulator.borrow().get_assembly(20);
                 UI::build_instruction_list(&main_window, asm, line);
                 if let Err(err) = emulator.borrow_mut().tick() {
@@ -149,7 +148,6 @@ impl UI {
             label,
             memory_buffer,
             instruction_list,
-            button,
         });
 
         self.application.activate();

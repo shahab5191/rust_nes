@@ -119,10 +119,10 @@ impl Hardware {
             let instruction = opcode::get_instruction(opcode);
             if let Some(instr) = instruction {
                 let (param, size) = Hardware::get_parameters(&self.bus, &instr.address_mode, pc);
-                disassembled.insert(pc, format!("{:04X}: {:02X} {}\n", pc, opcode, param));
+                disassembled.insert(pc, format!("{:04X}: {} {}", pc, instr.name, param));
                 pc += size;
             } else {
-                disassembled.insert(pc, format!("{:04X}: {:02X} UNKNOWN\n", pc, opcode));
+                disassembled.insert(pc, format!("{:04X}: {:02X} UNKNOWN", pc, opcode));
                 pc += 1; // Increment by 1 for unknown opcodes
             }
         }
