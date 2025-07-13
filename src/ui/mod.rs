@@ -1,5 +1,8 @@
 use gtk4::CssProvider;
+use gtk4::Picture;
 use gtk4::gdk::Display;
+use gtk4::gdk::{MemoryFormat, MemoryTexture};
+use gtk4::gdk_pixbuf::Pixbuf;
 use gtk4::gio::Cancellable;
 use gtk4::glib::ControlFlow;
 use gtk4::glib::timeout_add_local;
@@ -9,6 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::hardware::Hardware;
+use crate::utils::Color;
 
 #[derive(Debug, Clone)]
 struct MainWindow {
@@ -16,6 +20,7 @@ struct MainWindow {
     label: Label,
     memory_buffer: gtk4::TextBuffer,
     instruction_list: gtk4::ListBox,
+    chr_picture: Picture,
 }
 
 #[derive(Debug, Clone)]
@@ -103,6 +108,7 @@ impl UI {
             &provider,
             gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
+
         let window = ApplicationWindow::builder()
             .application(&self.application)
             .title("6502 Emulator")
@@ -135,12 +141,18 @@ impl UI {
         instruction_scrolled_window.set_min_content_width(200);
         instruction_scrolled_window.set_child(Some(&instruction_list));
 
+        let mut image_arr = self.emulator.ppu.get_chr_image(0);
+        let pixbuf = UI::create_pixbuf_from_buffer(&mut image_arr, 128, 128);
+
+        let chr_picture = Picture::for_pixbuf(&pixbuf);
+
         hbox.append(&memory_scrolled_window);
         hbox.append(&instruction_scrolled_window);
 
         vbox.append(&label);
         vbox.append(&hbox);
         vbox.append(&button);
+        vbox.append(&chr_picture);
         window.set_child(Some(&vbox));
         window.set_visible(true);
         self.main_window = Some(MainWindow {
@@ -148,8 +160,22 @@ impl UI {
             label,
             memory_buffer,
             instruction_list,
+            chr_picture,
         });
 
         self.application.activate();
+    }
+
+    fn create_pixbuf_from_buffer(framebuffer: &[u8], width: i32, height: i32) -> Pixbuf {
+        let bytes = glib::Bytes::from(framebuffer);
+        Pixbuf::from_bytes(
+            &bytes,
+            gtk4::gdk_pixbuf::Colorspace::Rgb,
+            true,
+            8,
+            width,
+            height,
+            width * 4,
+        )
     }
 }

@@ -1,5 +1,6 @@
 mod hardware;
 mod ui;
+mod utils;
 
 fn main() {
     let mut device = hardware::Hardware::new();

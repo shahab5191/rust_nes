@@ -64,6 +64,11 @@ impl Memory {
     }
 
     fn create_disassembled_line(&self, address: u16) -> String {
+        /// Create a disassembled line for the given address
+        /// # Arguments
+        /// * `address` - The address to disassemble
+        /// # Returns
+        /// * A string representing the disassembled instruction at the given address
         let opcode = self.mem[address as usize];
         let instruction = opcode::get_instruction(opcode);
         let disassembled;

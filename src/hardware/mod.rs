@@ -1,22 +1,26 @@
 mod bus;
 mod cpu;
 mod memory;
+mod ppu;
 use Result;
 use bus::Bus;
 use cpu::instructions::AddressMode;
 use cpu::opcode;
+use ppu::Ppu;
 use std::collections::HashMap;
 use std::io;
 
 #[derive(Debug, Clone)]
 pub struct Hardware {
     bus: bus::Bus,
+    pub ppu: Ppu,
 }
 
 impl Hardware {
     pub fn new() -> Self {
         Self {
             bus: bus::Bus::new(),
+            ppu: Ppu::new(),
         }
     }
 
@@ -58,9 +62,12 @@ impl Hardware {
         let cycles = (instruction.execute)(&mut self.bus, address_mode);
 
         // Handle cycles
-        for _ in 0..cycles {
-            // sleep
-            std::thread::sleep(std::time::Duration::from_millis(1));
+        for _ in 0..(cycles * 3) {
+            self.ppu.tick();
+            if self.ppu.frame_complete {
+                self.ppu.frame_complete = false;
+                println!("Frame complete");
+            }
         }
         return Ok(());
     }
