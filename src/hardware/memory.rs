@@ -4,14 +4,14 @@ use super::cpu::{instructions::AddressMode, opcode};
 
 #[derive(Debug, Clone)]
 pub struct Memory {
-    mem: [u8; 65536],
+    mem: [u8; 0x800],
     assembly: HashMap<u16, String>,
 }
 
 impl Memory {
     pub fn new() -> Self {
         let mut temp = Memory {
-            mem: [0; 65536],
+            mem: [0; 0x800],
             assembly: HashMap::new(),
         };
         temp.mem[0] = 0b00000100;
@@ -27,16 +27,10 @@ impl Memory {
 
     pub fn read(&self, address: u16) -> u8 {
         // Handling address mirroring in NES
-        let address = if address < 0x2000 {
-            let real_address = address % 0x800;
-            let value = self.mem[real_address as usize];
-            println!("Read: {0:08b}: {1:08b}", address, value);
-            value
-        } else {
-            println!("Warning: Reading from non-ram address {:#04X}", address);
-            0
-        };
-        return address;
+        let real_address = address % 0x7ff;
+        let value = self.mem[real_address as usize];
+        println!("Read: {0:08b}: {1:08b}", address, value);
+        value
     }
 
     pub fn read_word(&self, address: u16) -> u16 {

@@ -1,6 +1,5 @@
 pub mod memory;
 
-use crate::utils::Color;
 use memory::Memory;
 
 #[derive(Debug, Clone, Copy)]
@@ -41,7 +40,7 @@ impl Ppu {
         }
     }
 
-    fn read_tile(&self, tile_index: u16) -> [u8; 16] {
+    pub fn read_tile(&self, tile_index: u16) -> [u8; 16] {
         let mut tile_data = [0; 16];
         for i in 0..16 {
             tile_data[i] = self.memory.read_chr(tile_index * 16 + i as u16);
@@ -49,7 +48,7 @@ impl Ppu {
         tile_data
     }
 
-    fn tile_to_rgb(&self, tile_data: [u8; 16]) -> [u8; 256] {
+    pub fn tile_to_rgb(&self, tile_data: [u8; 16]) -> [u8; 256] {
         let mut rgb_data: [u8; 256] = [0; 256];
         for row in 0..8 {
             for col in 0..8 {
@@ -71,25 +70,18 @@ impl Ppu {
         rgb_data
     }
 
-    pub fn get_chr_image(&self, table_number: u8) -> [u8; 128 * 128 * 4] {
-        let mut image = [0; 128 * 128 * 4];
-        let start_tile: u32 = if table_number == 0 { 0 } else { 256 };
-        for tile_index in start_tile..start_tile + 256 {
-            let mut tile_data = self.read_tile(tile_index as u16);
-            let color = self.tile_to_rgb(tile_data);
-            let tile_y = (tile_index - start_tile) / 16;
-            let tile_x = (tile_index - start_tile) % 16;
-            for row in 0..8 {
-                for col in 0..8 {
-                    let pixel_y = (tile_y * 8) + row;
-                    let pixel_x = (tile_x * 8) + col;
-                    let pixel_index = ((pixel_y * 128 + pixel_x) * 4) as usize;
-                    let color_index = ((row * 8 + col) * 4) as usize;
-                    image[pixel_index..pixel_index + 4]
-                        .copy_from_slice(&color[color_index..color_index + 4]);
-                }
-            }
+    pub fn read_registers(&self, address: u16) -> u8 {
+        let reg = address & 0x2007; // Mask to get the relevant register address
+        match reg {
+            0x2000 => self.memory.read_nametable(0), // PPUCTRL
+            0x2001 => self.memory.read_nametable(1), // PPUMASK
+            0x2002 => self.memory.read_nametable(2), // PPUSTATUS
+            0x2003 => self.memory.read_nametable(3), // OAMADDR
+            0x2004 => self.memory.read_nametable(4), // OAMDATA
+            0x2005 => self.memory.read_nametable(5), // PPUSCROLL
+            0x2006 => self.memory.read_nametable(6), // PPUADDR
+            0x2007 => self.memory.read_nametable(7), // PPUDATA
+            _ => panic!("Invalid PPU register read at address: {:#X}", address),
         }
-        image
     }
 }

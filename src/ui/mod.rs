@@ -1,7 +1,6 @@
 use gtk4::CssProvider;
 use gtk4::Picture;
 use gtk4::gdk::Display;
-use gtk4::gdk::{MemoryFormat, MemoryTexture};
 use gtk4::gdk_pixbuf::Pixbuf;
 use gtk4::gio::Cancellable;
 use gtk4::glib::ControlFlow;
@@ -12,7 +11,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::hardware::Hardware;
-use crate::utils::Color;
 
 #[derive(Debug, Clone)]
 struct MainWindow {
@@ -20,7 +18,8 @@ struct MainWindow {
     label: Label,
     memory_buffer: gtk4::TextBuffer,
     instruction_list: gtk4::ListBox,
-    chr_picture: Picture,
+    chr_1_picture: Picture,
+    chr_2_picture: Picture,
 }
 
 #[derive(Debug, Clone)]
@@ -141,18 +140,26 @@ impl UI {
         instruction_scrolled_window.set_min_content_width(200);
         instruction_scrolled_window.set_child(Some(&instruction_list));
 
-        let mut image_arr = self.emulator.ppu.get_chr_image(0);
-        let pixbuf = UI::create_pixbuf_from_buffer(&mut image_arr, 128, 128);
+        let mut chr_1_image_arr = self.emulator.get_chr_image(0);
+        let mut chr_2_image_arr = self.emulator.get_chr_image(1);
 
-        let chr_picture = Picture::for_pixbuf(&pixbuf);
+        let chr_1_pixbuf = UI::create_pixbuf_from_buffer(&mut chr_1_image_arr, 128, 128);
+        let chr_2_pixbuf = UI::create_pixbuf_from_buffer(&mut chr_2_image_arr, 128, 128);
 
-        hbox.append(&memory_scrolled_window);
+        let chr_1_picture = Picture::for_pixbuf(&chr_1_pixbuf);
+        let chr_2_picture = Picture::for_pixbuf(&chr_2_pixbuf);
+
+        hbox.append(&chr_1_picture);
+        hbox.append(&chr_2_picture);
         hbox.append(&instruction_scrolled_window);
 
         vbox.append(&label);
         vbox.append(&hbox);
         vbox.append(&button);
-        vbox.append(&chr_picture);
+
+        vbox.set_margin_end(2);
+        vbox.set_margin_start(2);
+
         window.set_child(Some(&vbox));
         window.set_visible(true);
         self.main_window = Some(MainWindow {
@@ -160,7 +167,8 @@ impl UI {
             label,
             memory_buffer,
             instruction_list,
-            chr_picture,
+            chr_1_picture,
+            chr_2_picture,
         });
 
         self.application.activate();

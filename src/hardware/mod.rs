@@ -1,4 +1,5 @@
 mod bus;
+mod cartridge;
 mod cpu;
 mod memory;
 mod ppu;
@@ -6,21 +7,18 @@ use Result;
 use bus::Bus;
 use cpu::instructions::AddressMode;
 use cpu::opcode;
-use ppu::Ppu;
 use std::collections::HashMap;
 use std::io;
 
 #[derive(Debug, Clone)]
 pub struct Hardware {
     bus: bus::Bus,
-    pub ppu: Ppu,
 }
 
 impl Hardware {
     pub fn new() -> Self {
         Self {
             bus: bus::Bus::new(),
-            ppu: Ppu::new(),
         }
     }
 
@@ -63,9 +61,9 @@ impl Hardware {
 
         // Handle cycles
         for _ in 0..(cycles * 3) {
-            self.ppu.tick();
-            if self.ppu.frame_complete {
-                self.ppu.frame_complete = false;
+            self.bus.ppu.tick();
+            if self.bus.ppu.frame_complete {
+                self.bus.ppu.frame_complete = false;
                 println!("Frame complete");
             }
         }
@@ -152,5 +150,27 @@ impl Hardware {
             AddressMode::Implicit => (String::new(), 1),
             AddressMode::Accumulator => (String::from("A"), 1),
         }
+    }
+
+    pub fn get_chr_image(&self, table_number: u8) -> [u8; 128 * 128 * 4] {
+        let mut image = [0; 128 * 128 * 4];
+        let start_tile: u32 = if table_number == 0 { 0 } else { 256 };
+        for tile_index in start_tile..start_tile + 256 {
+            let tile_data = self.bus.ppu.read_tile(tile_index as u16);
+            let color = self.bus.ppu.tile_to_rgb(tile_data);
+            let tile_y = (tile_index - start_tile) / 16;
+            let tile_x = (tile_index - start_tile) % 16;
+            for row in 0..8 {
+                for col in 0..8 {
+                    let pixel_y = (tile_y * 8) + row;
+                    let pixel_x = (tile_x * 8) + col;
+                    let pixel_index = ((pixel_y * 128 + pixel_x) * 4) as usize;
+                    let color_index = ((row * 8 + col) * 4) as usize;
+                    image[pixel_index..pixel_index + 4]
+                        .copy_from_slice(&color[color_index..color_index + 4]);
+                }
+            }
+        }
+        image
     }
 }

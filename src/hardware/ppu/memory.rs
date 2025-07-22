@@ -7,8 +7,11 @@ pub struct Memory {
 
 impl Memory {
     pub fn new() -> Self {
+        let mut chr = [0; 8192];
+        chr[0..16].copy_from_slice(&[255; 16]); // Initialize first 256 bytes to 0
+        chr[0x1008..0x1010].copy_from_slice(&[255; 8]);
         Memory {
-            chr: [0; 8192],
+            chr,
             nametable: [0; 4096],
             palette: [0; 32],
         }

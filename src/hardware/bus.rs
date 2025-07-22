@@ -1,4 +1,6 @@
+use super::ppu::Ppu;
 use super::{
+    cartridge::Cartridge,
     cpu::{CPU, Registers, instructions::AddressMode},
     memory::Memory,
 };
@@ -12,6 +14,8 @@ pub struct ReadAddressWithModeResult {
 pub struct Bus {
     pub cpu: CPU,
     pub memory: Memory,
+    pub ppu: Ppu,
+    pub cartridge: Cartridge,
 }
 
 impl Bus {
@@ -19,6 +23,8 @@ impl Bus {
         let bus = Bus {
             cpu: CPU::new(),
             memory: Memory::new(),
+            ppu: Ppu::new(),
+            cartridge: Cartridge::new(),
         };
         return bus;
     }
@@ -51,7 +57,19 @@ impl Bus {
     }
 
     pub fn read(&self, address: u16) -> u8 {
-        self.memory.read(address)
+        if address < 0x2000 {
+            self.memory.read(address % 0x0800)
+        } else if address < 0x4000 {
+            // Handle PPU registers
+            self.ppu.read_registers(address)
+        } else if address < 0x6000 {
+            // Unused area, return 0
+            0
+        } else if address < 0x8000 {
+            self.memory.read(address)
+        } else {
+            self.memory.read(address)
+        }
     }
 
     pub fn read_instruct(&self) -> u8 {
