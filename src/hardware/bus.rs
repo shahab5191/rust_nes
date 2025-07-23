@@ -56,12 +56,12 @@ impl Bus {
         self.cpu.set_counter(pc + value);
     }
 
-    pub fn read(&self, address: u16) -> u8 {
+    pub fn read(&mut self, address: u16) -> u8 {
         if address < 0x2000 {
             self.memory.read(address % 0x0800)
         } else if address < 0x4000 {
             // Handle PPU registers
-            self.ppu.read_registers(address)
+            self.cpu_read(address)
         } else if address < 0x6000 {
             // Unused area, return 0
             0
@@ -82,7 +82,7 @@ impl Bus {
         self.memory.read(pc.wrapping_add(1))
     }
 
-    pub fn read_word(&self, address: u16) -> u16 {
+    pub fn read_word(&mut self, address: u16) -> u16 {
         let low_byte = self.read(address);
         let high_byte = self.read(address.wrapping_add(1));
         ((high_byte as u16) << 8) + (low_byte as u16)
@@ -277,6 +277,48 @@ impl Bus {
                     cycles: 0,
                 }
             }
+        }
+    }
+
+    pub fn cartridge_ppu_write(&mut self, address: u16, value: u8) {
+        self.cartridge.mapper.ppu_write(address, value);
+    }
+
+    pub fn cartridge_ppu_read(&self, address: u16) -> Option<u8> {
+        self.cartridge.mapper.ppu_read(address)
+    }
+
+    pub fn cpu_read(&mut self, address: u16) -> u8 {
+        if address < 0x2000 {
+            self.memory.read(address % 0x0800)
+        } else if address < 0x4000 {
+            // Handle PPU registers
+            let cartridge_ref = &self.cartridge;
+            self.ppu.read_register(address, cartridge_ref)
+        } else if address < 0x6000 {
+            // Unused area, return 0
+            0
+        } else {
+            match self.cartridge.mapper.cpu_read(address) {
+                Some(value) => value,
+                None => {
+                    panic!(
+                        "Invalid CPU read at address: {:#04X}. This address is not mapped in the cartridge.",
+                        address
+                    );
+                }
+            }
+        }
+    }
+
+    fn cpu_write(&mut self, addr: u16, value: u8) {
+        match addr {
+            0x0000..=0x1FFF => self.memory.write(addr, value),
+            0x2000..=0x3FFF => self.ppu.write_register(addr, value, &mut self.cartridge),
+            0x6000..=0xFFFF => {
+                self.cartridge.mapper.cpu_write(addr, value);
+            }
+            _ => {}
         }
     }
 }

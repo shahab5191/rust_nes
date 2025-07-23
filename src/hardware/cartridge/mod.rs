@@ -1,7 +1,6 @@
-use std::{
-    io::{Read, Seek, SeekFrom},
-    path::Path,
-};
+mod mapper;
+use mapper::{Mapper, Mapper0};
+use std::io::{Read, Seek, SeekFrom};
 
 struct Header {
     pub prg_rom_size: u8,
@@ -23,20 +22,14 @@ pub enum ScreenMirroring {
 
 #[derive(Debug, Clone)]
 pub struct Cartridge {
-    pub prg_rom: Vec<u8>,
-    pub chr_rom: Vec<u8>,
-    pub prg_ram: Vec<u8>,
-    mapper: u8,
-    mirroring: ScreenMirroring,
+    pub mapper: Box<dyn Mapper>,
+    pub mirroring: ScreenMirroring,
 }
 
 impl Cartridge {
     pub fn new() -> Self {
         Cartridge {
-            prg_rom: Vec::new(),
-            chr_rom: Vec::new(),
-            prg_ram: Vec::new(),
-            mapper: 0,
+            mapper: Box::new(Mapper0::new(vec![], vec![], false)),
             mirroring: ScreenMirroring::Single,
         }
     }
@@ -80,24 +73,31 @@ impl Cartridge {
             ScreenMirroring::Horizontal
         };
 
-        let prg_rom = vec![0u8; (header.prg_rom_size as usize) * 16 * 1024];
-        let prg_ram = vec![0u8; 8 * 1024]; // 8 KB of PRG RAM
-        self.prg_rom = prg_rom;
-        self.prg_ram = prg_ram;
-        self.mapper = mapper;
-        self.mirroring = mirroring;
+        let mut prg_rom = vec![0u8; (header.prg_rom_size as usize) * 16 * 1024];
 
-        file.read_exact(&mut self.prg_rom)?;
+        file.read_exact(&mut prg_rom)?;
+
+        let mut chr_rom: Vec<u8>;
         if header.chr_rom_size > 0 {
-            let mut chr_rom = vec![0u8; (header.chr_rom_size as usize) * 8 * 1024];
+            chr_rom = vec![0u8; (header.chr_rom_size as usize) * 8 * 1024];
             file.read_exact(&mut chr_rom)?;
-            self.chr_rom = chr_rom;
         } else {
             // If CHR ROM size is 0, we can use CHR RAM
-            self.chr_rom = vec![0u8; 8192]; // 8 KB of CHR RAM
+            chr_rom = vec![0u8; 8192]; // 8 KB of CHR RAM
         }
-        file.read_exact(&mut self.chr_rom)?;
+        file.read_exact(&mut chr_rom)?;
 
+        let mapper = match mapper {
+            0 => Box::new(Mapper0::new(
+                prg_rom.clone(),
+                chr_rom.clone(),
+                header.chr_rom_size == 0,
+            )),
+            _ => panic!("Unsupported mapper: {}", mapper),
+        };
+
+        self.mapper = mapper;
+        self.mirroring = mirroring;
         Ok(())
     }
 }

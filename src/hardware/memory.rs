@@ -22,7 +22,8 @@ impl Memory {
     }
 
     pub fn silent_read(&self, address: u16) -> u8 {
-        self.mem[address as usize]
+        let real_address = address % 0x7ff;
+        self.mem[real_address as usize]
     }
 
     pub fn read(&self, address: u16) -> u8 {

@@ -5,10 +5,12 @@ mod memory;
 mod ppu;
 use Result;
 use bus::Bus;
+use cartridge::Cartridge;
 use cpu::instructions::AddressMode;
 use cpu::opcode;
 use std::collections::HashMap;
 use std::io;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct Hardware {
@@ -22,17 +24,17 @@ impl Hardware {
         }
     }
 
-    pub fn load_program(&mut self, program: Vec<u8>) {
+    pub fn load_program(&mut self, path: &str) -> Result<(), io::Error> {
         println!("Loading program into memory");
-        for (i, byte) in program.iter().enumerate() {
-            self.bus.memory.write(i as u16, *byte);
-        }
+        let rom = Cartridge::load_ines_rom(path)?;
+        self.bus.set_ppu_memory(&rom);
         self.bus.cpu.set_counter(0x00);
         println!(
             "Program loaded, starting at address: {:#04x}",
             self.bus.cpu.get_counter()
         );
-        self.disassemble()
+        self.disassemble();
+        Ok(())
     }
 
     pub fn tick(&mut self) -> Result<(), io::Error> {
