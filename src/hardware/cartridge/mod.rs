@@ -39,6 +39,8 @@ impl Cartridge {
         // Open the file
         let mut file = std::fs::File::open(file_path)?;
 
+        println!("File length: {}", file.metadata()?.len());
+
         let mut header_bytes = [0u8; 16];
         file.read_exact(&mut header_bytes)?;
         if &header_bytes[0..4] != b"NES\x1A" {
@@ -46,13 +48,13 @@ impl Cartridge {
         }
 
         let header = Header {
-            prg_rom_size: header_bytes[4],
-            chr_rom_size: header_bytes[5],
-            mapper1: header_bytes[6],
-            mapper2: header_bytes[7],
-            prg_ram_size: header_bytes[8],
-            tv_system1: header_bytes[9],
-            tv_system2: header_bytes[10],
+            prg_rom_size: header_bytes[4] as u8,
+            chr_rom_size: header_bytes[5] as u8,
+            mapper1: header_bytes[6] as u8,
+            mapper2: header_bytes[7] as u8,
+            prg_ram_size: header_bytes[8] as u8,
+            tv_system1: header_bytes[9] as u8,
+            tv_system2: header_bytes[10] as u8,
         };
         // Process the header and load PRG and CHR ROMs
         // This is a simplified example; actual implementation may vary
@@ -63,7 +65,7 @@ impl Cartridge {
             file.seek(SeekFrom::Current(512))?;
         }
 
-        let mapper = (header.mapper1 >> 4) | (header.mapper2 & 0xF0);
+        let mapper: u8 = (header.mapper1 >> 4) | (header.mapper2 & 0xF0);
 
         let mirroring = if header.mapper1 & 0b1000 != 0 {
             ScreenMirroring::FourScreen
@@ -80,7 +82,6 @@ impl Cartridge {
         let mut chr_rom: Vec<u8>;
         if header.chr_rom_size > 0 {
             chr_rom = vec![0u8; (header.chr_rom_size as usize) * 8 * 1024];
-            file.read_exact(&mut chr_rom)?;
         } else {
             // If CHR ROM size is 0, we can use CHR RAM
             chr_rom = vec![0u8; 8192]; // 8 KB of CHR RAM
@@ -95,6 +96,8 @@ impl Cartridge {
             )),
             _ => panic!("Unsupported mapper: {}", mapper),
         };
+
+        println!("Mapper: {:?}", mapper);
 
         self.mapper = mapper;
         self.mirroring = mirroring;

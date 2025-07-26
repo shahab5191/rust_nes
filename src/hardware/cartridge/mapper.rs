@@ -38,57 +38,98 @@ impl Mapper0 {
 }
 
 impl Mapper for Mapper0 {
-    // === CPU ===
     fn cpu_read(&self, addr: u16) -> Option<u8> {
         match addr {
-            0x6000..=0x7FFF => Some(self.prg_ram[(addr - 0x6000) as usize]),
-            0x8000..=0xFFFF => {
-                let index = if self.prg_rom.len() == 0x4000 {
-                    // 16KB mirrored
-                    (addr - 0x8000) as usize % 0x4000
+            // PRG RAM (Optional, typically 0x6000-0x7FFF)
+            0x6000..=0x7FFF => {
+                // Mask to get the offset within the 8KB block.
+                let index = (addr - 0x6000) as usize;
+                if index < self.prg_ram.len() {
+                    Some(self.prg_ram[index])
                 } else {
-                    (addr - 0x8000) as usize
-                };
-                Some(self.prg_rom[index])
+                    eprintln!("CPU Read: PRG RAM address 0x{:04X} out of bounds.", addr);
+                    None
+                }
             }
-            _ => None,
+            // PRG ROM (0x8000-0xFFFF)
+            0x8000..=0xFFFF => {
+                // Mapper0 (NROM) can have 16KB or 32KB PRG ROM.
+                // If 16KB, 0xC000-0xFFFF mirrors 0x8000-0xBFFF.
+                // If 32KB, it's straight 0x8000-0xFFFF.
+
+                let prg_rom_len = self.prg_rom.len();
+                let mut mapped_addr = (addr - 0x8000) as usize;
+
+                if prg_rom_len == 0x4000 {
+                    // 16KB PRG ROM
+                    // Mirror 0xC000-0xFFFF back to 0x8000-0xBFFF
+                    mapped_addr %= 0x4000;
+                }
+
+                if mapped_addr < prg_rom_len {
+                    Some(self.prg_rom[mapped_addr])
+                } else {
+                    eprintln!(
+                        "CPU Read: PRG ROM address 0x{:04X} out of bounds (mapped to {}).",
+                        addr, mapped_addr
+                    );
+                    None
+                }
+            }
+            _ => {
+                // Addresses outside cartridge memory space (handled by Bus)
+                None
+            }
         }
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) -> bool {
         match addr {
+            // PRG RAM
             0x6000..=0x7FFF => {
-                self.prg_ram[(addr - 0x6000) as usize] = value;
-                true
-            }
-            0x8000..=0xFFFF => {
-                // ROM: ignore writes
-                false
-            }
-            _ => false,
-        }
-    }
-
-    // === PPU ===
-
-    fn ppu_read(&self, addr: u16) -> Option<u8> {
-        match addr {
-            0x0000..=0x1FFF => Some(self.chr[addr as usize]),
-            _ => None,
-        }
-    }
-
-    fn ppu_write(&mut self, addr: u16, value: u8) -> bool {
-        match addr {
-            0x0000..=0x1FFF => {
-                if self.chr_is_ram {
-                    self.chr[addr as usize] = value;
-                    true
+                let index = (addr - 0x6000) as usize;
+                if index < self.prg_ram.len() {
+                    self.prg_ram[index] = value;
+                    true // Write successful
                 } else {
-                    false // CHR ROM is read-only
+                    eprintln!("CPU Write: PRG RAM address 0x{:04X} out of bounds.", addr);
+                    false
                 }
             }
-            _ => false,
+            // PRG ROM (Writes to ROM are ignored)
+            0x8000..=0xFFFF => {
+                eprintln!("CPU Write: Attempted to write to PRG ROM at 0x{:04X}", addr);
+                false
+            }
+            _ => false, // Address outside cartridge memory space
+        }
+    }
+
+    fn ppu_read(&self, addr: u16) -> Option<u8> {
+        let index = addr as usize;
+        if index < self.chr.len() {
+            Some(self.chr[index])
+        } else {
+            eprintln!("PPU Read: CHR address 0x{:04X} out of bounds.", addr);
+            None
+        }
+    }
+
+    fn ppu_write(&mut self, addr: u16, data: u8) -> bool {
+        // PPU addresses 0x0000-0x1FFF map directly to CHR data on Mapper0.
+        // Only allow writes if chr_is_ram is true.
+        if self.chr_is_ram {
+            let index = addr as usize;
+            if index < self.chr.len() {
+                self.chr[index] = data;
+                true // Write successful
+            } else {
+                eprintln!("PPU Write: CHR RAM address 0x{:04X} out of bounds.", addr);
+                false // Write failed
+            }
+        } else {
+            eprintln!("PPU Write: Attempted to write to CHR-ROM at 0x{:04X}", addr);
+            false // Write ignored
         }
     }
 

@@ -56,12 +56,12 @@ impl Bus {
         self.cpu.set_counter(pc + value);
     }
 
-    pub fn read(&mut self, address: u16) -> u8 {
+    pub fn read(&mut self, address: u16) -> Option<u8> {
         if address < 0x2000 {
             self.memory.read(address % 0x0800)
         } else if address < 0x4000 {
             // Handle PPU registers
-            self.cpu_read(address)
+            self.cartridge.mapper.cpu_read(address)
         } else if address < 0x6000 {
             // Unused area, return 0
             0
@@ -88,7 +88,7 @@ impl Bus {
         ((high_byte as u16) << 8) + (low_byte as u16)
     }
 
-    pub fn read_word_buggy(&self, address: u16) -> u16 {
+    pub fn read_word_buggy(&mut self, address: u16) -> u16 {
         let low = self.read(address);
         let high = if address & 0x00FF == 0x00FF {
             println!("Buggy read at address {:#04x}", &address);
@@ -100,7 +100,7 @@ impl Bus {
         ((high as u16) << 8) | (low as u16)
     }
 
-    pub fn read_next_word(&self) -> u16 {
+    pub fn read_next_word(&mut self) -> u16 {
         let pc = self.cpu.get_counter();
         self.read_word(pc.wrapping_add(1))
     }
@@ -134,7 +134,10 @@ impl Bus {
         (high_byte as u16) << 8 + (low_byte as u16)
     }
 
-    pub fn read_address_with_mode(&self, address_mode: &AddressMode) -> ReadAddressWithModeResult {
+    pub fn read_address_with_mode(
+        &mut self,
+        address_mode: &AddressMode,
+    ) -> ReadAddressWithModeResult {
         "
         Reads the value from memory based on the address mode and operand.
         args:
@@ -280,45 +283,71 @@ impl Bus {
         }
     }
 
-    pub fn cartridge_ppu_write(&mut self, address: u16, value: u8) {
+    pub fn ppu_write(&mut self, address: u16, value: u8) {
         self.cartridge.mapper.ppu_write(address, value);
     }
 
-    pub fn cartridge_ppu_read(&self, address: u16) -> Option<u8> {
-        self.cartridge.mapper.ppu_read(address)
-    }
-
-    pub fn cpu_read(&mut self, address: u16) -> u8 {
-        if address < 0x2000 {
-            self.memory.read(address % 0x0800)
-        } else if address < 0x4000 {
-            // Handle PPU registers
-            let cartridge_ref = &self.cartridge;
-            self.ppu.read_register(address, cartridge_ref)
-        } else if address < 0x6000 {
-            // Unused area, return 0
-            0
-        } else {
-            match self.cartridge.mapper.cpu_read(address) {
-                Some(value) => value,
-                None => {
-                    panic!(
-                        "Invalid CPU read at address: {:#04X}. This address is not mapped in the cartridge.",
-                        address
-                    );
-                }
+    pub fn ppu_read(&mut self, address: u16) -> Option<u8> {
+        match address {
+            0x0000..=0x1FFF => {
+                // CHR RAM or CHR ROM
+                self.cartridge.mapper.ppu_read(address)
+            }
+            0x2000..=0x3FFF => {
+                // PPU registers
+                self.ppu.read_register(address, &self.cartridge)
+            }
+            0x4000..=0x5FFF => {
+                // Unused area, return None
+                None
+            }
+            _ => {
+                // Handle cartridge-specific PPU reads
+                self.cartridge.mapper.ppu_read(address)
             }
         }
+    }
+
+    pub fn cpu_read(&mut self, address: u16) -> Option<u8> {
+        self.cartridge.mapper.cpu_read(address)
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
-        match addr {
-            0x0000..=0x1FFF => self.memory.write(addr, value),
-            0x2000..=0x3FFF => self.ppu.write_register(addr, value, &mut self.cartridge),
-            0x6000..=0xFFFF => {
-                self.cartridge.mapper.cpu_write(addr, value);
-            }
-            _ => {}
+        self.cartridge.mapper.cpu_write(addr, value);
+    }
+
+    pub fn read_tile(&self, tile_index: u16, bus: &mut Bus) -> [u8; 16] {
+        let mut tile_data = [0; 16];
+        for i in 0..16 {
+            tile_data[i] = match bus.ppu_read(tile_index * 16 + i as u16) {
+                Some(value) => value,
+                None => {
+                    panic!("Failed to read tile data at index: {}", tile_index);
+                }
+            };
         }
+        tile_data
+    }
+
+    pub fn tile_to_rgb(&self, tile_data: [u8; 16]) -> [u8; 256] {
+        let mut rgb_data: [u8; 256] = [0; 256];
+        for row in 0..8 {
+            for col in 0..8 {
+                let row2 = row + 8;
+                let bit0 = (tile_data[row] >> (7 - col)) & 0x1;
+                let bit1 = (tile_data[row2] >> (7 - col)) & 0x1;
+                let color_index: u8 = (bit1 << 1) | bit0;
+                let color: [u8; 4] = match color_index {
+                    0 => [0, 0, 0, 255],
+                    1 => [75, 75, 75, 255],
+                    2 => [200, 200, 200, 255],
+                    3 => [255, 255, 255, 255],
+                    _ => [0, 0, 0, 255],
+                };
+                let pixel_index = (row * 8 + col) * 4;
+                rgb_data[pixel_index..pixel_index + 4].copy_from_slice(&color);
+            }
+        }
+        rgb_data
     }
 }

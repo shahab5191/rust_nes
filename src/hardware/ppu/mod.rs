@@ -1,7 +1,6 @@
-use super::{
-    bus::Bus,
-    cartridge::{self, Cartridge},
-};
+mod memory;
+use super::{bus::Bus, cartridge::Cartridge};
+use memory::Memory;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ppu {
@@ -22,6 +21,8 @@ pub struct Ppu {
     pub temp_addr: u16, // temp VRAM address
     pub fine_x: u8,
     pub buffered_data: u8, // used for delayed PPU reads
+
+    memory: Memory,
 }
 
 impl Ppu {
@@ -43,6 +44,7 @@ impl Ppu {
             temp_addr: 0,
             fine_x: 0,
             buffered_data: 0,
+            memory: Memory::new(),
         }
     }
 
@@ -66,53 +68,18 @@ impl Ppu {
         }
     }
 
-    pub fn read_tile(&self, tile_index: u16, bus: &Bus) -> [u8; 16] {
-        let mut tile_data = [0; 16];
-        for i in 0..16 {
-            tile_data[i] = match bus.cartridge_ppu_read(tile_index * 16 + i as u16) {
-                Some(value) => value,
-                None => {
-                    panic!("Failed to read tile data at index: {}", tile_index);
-                }
-            };
-        }
-        tile_data
-    }
-
-    pub fn tile_to_rgb(&self, tile_data: [u8; 16]) -> [u8; 256] {
-        let mut rgb_data: [u8; 256] = [0; 256];
-        for row in 0..8 {
-            for col in 0..8 {
-                let row2 = row + 8;
-                let bit0 = (tile_data[row] >> (7 - col)) & 0x1;
-                let bit1 = (tile_data[row2] >> (7 - col)) & 0x1;
-                let color_index: u8 = (bit1 << 1) | bit0;
-                let color: [u8; 4] = match color_index {
-                    0 => [0, 0, 0, 255],
-                    1 => [75, 75, 75, 255],
-                    2 => [200, 200, 200, 255],
-                    3 => [255, 255, 255, 255],
-                    _ => [0, 0, 0, 255],
-                };
-                let pixel_index = (row * 8 + col) * 4;
-                rgb_data[pixel_index..pixel_index + 4].copy_from_slice(&color);
-            }
-        }
-        rgb_data
-    }
-
-    pub fn read_register(&mut self, addr: u16, mut cartridge: &Cartridge) -> u8 {
+    pub fn read_register(&mut self, addr: u16, cartridge: &Cartridge) -> Option<u8> {
         match addr & 0x2007 {
             0x2002 => {
                 // PPUSTATUS
                 let data = self.status;
                 self.status &= 0x7F; // clear VBlank
                 self.addr_latch = false;
-                data
+                Some(data)
             }
             0x2004 => {
                 // OAMDATA
-                self.oam_data[self.oam_addr as usize]
+                Some(self.oam_data[self.oam_addr as usize])
             }
             0x2007 => {
                 // PPUDATA
@@ -127,9 +94,9 @@ impl Ppu {
                 };
                 // Increment address
                 self.vram_addr += if self.control & 0x04 != 0 { 32 } else { 1 };
-                result
+                Some(result)
             }
-            _ => 0,
+            _ => Some(0),
         }
     }
 

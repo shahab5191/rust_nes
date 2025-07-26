@@ -5,12 +5,10 @@ mod memory;
 mod ppu;
 use Result;
 use bus::Bus;
-use cartridge::Cartridge;
 use cpu::instructions::AddressMode;
 use cpu::opcode;
 use std::collections::HashMap;
 use std::io;
-use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub struct Hardware {
@@ -22,19 +20,6 @@ impl Hardware {
         Self {
             bus: bus::Bus::new(),
         }
-    }
-
-    pub fn load_program(&mut self, path: &str) -> Result<(), io::Error> {
-        println!("Loading program into memory");
-        let rom = Cartridge::load_ines_rom(path)?;
-        self.bus.set_ppu_memory(&rom);
-        self.bus.cpu.set_counter(0x00);
-        println!(
-            "Program loaded, starting at address: {:#04x}",
-            self.bus.cpu.get_counter()
-        );
-        self.disassemble();
-        Ok(())
     }
 
     pub fn tick(&mut self) -> Result<(), io::Error> {
@@ -125,7 +110,8 @@ impl Hardware {
             let opcode = self.bus.memory.silent_read(pc);
             let instruction = opcode::get_instruction(opcode);
             if let Some(instr) = instruction {
-                let (param, size) = Hardware::get_parameters(&self.bus, &instr.address_mode, pc);
+                let (param, size) =
+                    Hardware::get_parameters(&mut self.bus, &instr.address_mode, pc);
                 disassembled.insert(pc, format!("{:04X}: {} {}", pc, instr.name, param));
                 pc += size;
             } else {
@@ -136,7 +122,7 @@ impl Hardware {
         self.bus.memory.set_assembly(disassembled);
     }
 
-    fn get_parameters(bus: &Bus, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
+    fn get_parameters(bus: &mut Bus, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
         match addr_mode {
             AddressMode::Immidiate => (format!("#${:02X}", bus.read(addr + 1)), 2),
             AddressMode::ZeroPage => (format!("${:02X}", bus.read(addr + 1)), 2),
@@ -154,11 +140,11 @@ impl Hardware {
         }
     }
 
-    pub fn get_chr_image(&self, table_number: u8) -> [u8; 128 * 128 * 4] {
+    pub fn get_chr_image(&mut self, table_number: u8) -> [u8; 128 * 128 * 4] {
         let mut image = [0; 128 * 128 * 4];
         let start_tile: u32 = if table_number == 0 { 0 } else { 256 };
         for tile_index in start_tile..start_tile + 256 {
-            let tile_data = self.bus.ppu.read_tile(tile_index as u16);
+            let tile_data = self.bus.ppu.read_tile(tile_index as u16, &mut self.bus);
             let color = self.bus.ppu.tile_to_rgb(tile_data);
             let tile_y = (tile_index - start_tile) / 16;
             let tile_x = (tile_index - start_tile) % 16;
@@ -174,5 +160,11 @@ impl Hardware {
             }
         }
         image
+    }
+
+    pub fn load_rom(&mut self, file_path: &str) -> Result<(), io::Error> {
+        self.bus.cartridge.load_ines_rom(file_path)?;
+        self.disassemble();
+        Ok(())
     }
 }
