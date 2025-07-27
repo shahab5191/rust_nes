@@ -5,7 +5,7 @@ mod utils;
 fn main() {
     let mut device = hardware::Hardware::new();
     device
-        .load_rom("roms/full_palette.nes")
+        .load_rom("roms/super-mario.nes")
         .expect("Failed to load ROM");
     let mut emulator_ui = ui::UI::new(device);
     emulator_ui.run();

@@ -56,19 +56,24 @@ impl Bus {
         self.cpu.set_counter(pc + value);
     }
 
-    pub fn read(&mut self, address: u16) -> Option<u8> {
+    pub fn read(&mut self, address: u16) -> u8 {
         if address < 0x2000 {
             self.memory.read(address % 0x0800)
         } else if address < 0x4000 {
-            // Handle PPU registers
-            self.cartridge.mapper.cpu_read(address)
-        } else if address < 0x6000 {
-            // Unused area, return 0
+            self.ppu
+                .read_register(address, &self.cartridge)
+                .expect("Could not read PPU register")
+        } else if address < 0x4018 {
+            // APU and I/O registers - Implement later
             0
-        } else if address < 0x8000 {
-            self.memory.read(address)
+        } else if address < 0x4020 {
+            // Normally disabled
+            0
         } else {
-            self.memory.read(address)
+            // Cartridge memory
+            self.cartridge.mapper.cpu_read(address).expect(
+                format!("Could not read from cartridge at address {:#04x}", address).as_str(),
+            )
         }
     }
 
@@ -293,14 +298,6 @@ impl Bus {
                 // CHR RAM or CHR ROM
                 self.cartridge.mapper.ppu_read(address)
             }
-            0x2000..=0x3FFF => {
-                // PPU registers
-                self.ppu.read_register(address, &self.cartridge)
-            }
-            0x4000..=0x5FFF => {
-                // Unused area, return None
-                None
-            }
             _ => {
                 // Handle cartridge-specific PPU reads
                 self.cartridge.mapper.ppu_read(address)
@@ -308,18 +305,21 @@ impl Bus {
         }
     }
 
-    pub fn cpu_read(&mut self, address: u16) -> Option<u8> {
-        self.cartridge.mapper.cpu_read(address)
+    pub fn cpu_read(&mut self, address: u16) -> u8 {
+        self.cartridge
+            .mapper
+            .cpu_read(address)
+            .expect(format!("Could not read cpu on {}", address).as_str())
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
         self.cartridge.mapper.cpu_write(addr, value);
     }
 
-    pub fn read_tile(&self, tile_index: u16, bus: &mut Bus) -> [u8; 16] {
+    pub fn read_tile(&mut self, tile_index: u16) -> [u8; 16] {
         let mut tile_data = [0; 16];
         for i in 0..16 {
-            tile_data[i] = match bus.ppu_read(tile_index * 16 + i as u16) {
+            tile_data[i] = match self.ppu_read(tile_index * 16 + i as u16) {
                 Some(value) => value,
                 None => {
                     panic!("Failed to read tile data at index: {}", tile_index);

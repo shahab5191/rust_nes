@@ -20,7 +20,7 @@ impl Clone for Box<dyn Mapper> {
 pub struct Mapper0 {
     prg_rom: Vec<u8>,
     prg_ram: Vec<u8>,
-    chr: Vec<u8>,
+    pub chr: Vec<u8>,
     chr_is_ram: bool,
 }
 
@@ -106,9 +106,10 @@ impl Mapper for Mapper0 {
     }
 
     fn ppu_read(&self, addr: u16) -> Option<u8> {
-        let index = addr as usize;
+        let index = (addr & 0x3FFF) as usize;
         if index < self.chr.len() {
-            Some(self.chr[index])
+            let data = self.chr[index];
+            Some(data)
         } else {
             eprintln!("PPU Read: CHR address 0x{:04X} out of bounds.", addr);
             None

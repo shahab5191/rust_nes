@@ -124,17 +124,17 @@ impl Hardware {
 
     fn get_parameters(bus: &mut Bus, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
         match addr_mode {
-            AddressMode::Immidiate => (format!("#${:02X}", bus.read(addr + 1)), 2),
-            AddressMode::ZeroPage => (format!("${:02X}", bus.read(addr + 1)), 2),
-            AddressMode::ZeroPageX => (format!("${:02X}, X", bus.read(addr + 1)), 2),
-            AddressMode::ZeroPageY => (format!("${:02X}, Y", bus.read(addr + 1)), 2),
+            AddressMode::Immidiate => (format!("#${:02X}", bus.cpu_read(addr + 1)), 2),
+            AddressMode::ZeroPage => (format!("${:02X}", bus.cpu_read(addr + 1)), 2),
+            AddressMode::ZeroPageX => (format!("${:02X}, X", bus.cpu_read(addr + 1)), 2),
+            AddressMode::ZeroPageY => (format!("${:02X}, Y", bus.cpu_read(addr + 1)), 2),
             AddressMode::Absolute => (format!("${:04X}", bus.read_word(addr + 1)), 3),
             AddressMode::AbsoluteX => (format!("${:04X}, X", bus.read_word(addr + 1)), 3),
             AddressMode::AbsoluteY => (format!("${:04X}, Y", bus.read_word(addr + 1)), 3),
             AddressMode::Indirect => (format!("(${:04X})", bus.read_word(addr + 1)), 3),
-            AddressMode::IndirectX => (format!("(${:02X}, X)", bus.read(addr + 1)), 2),
-            AddressMode::IndirectY => (format!("(${:02X}), Y", bus.read(addr + 1)), 2),
-            AddressMode::Relative => (format!("${:02X}", bus.read(addr + 1)), 2),
+            AddressMode::IndirectX => (format!("(${:02X}, X)", bus.cpu_read(addr + 1)), 2),
+            AddressMode::IndirectY => (format!("(${:02X}), Y", bus.cpu_read(addr + 1)), 2),
+            AddressMode::Relative => (format!("${:02X}", bus.cpu_read(addr + 1)), 2),
             AddressMode::Implicit => (String::new(), 1),
             AddressMode::Accumulator => (String::from("A"), 1),
         }
@@ -144,8 +144,8 @@ impl Hardware {
         let mut image = [0; 128 * 128 * 4];
         let start_tile: u32 = if table_number == 0 { 0 } else { 256 };
         for tile_index in start_tile..start_tile + 256 {
-            let tile_data = self.bus.ppu.read_tile(tile_index as u16, &mut self.bus);
-            let color = self.bus.ppu.tile_to_rgb(tile_data);
+            let tile_data = self.bus.read_tile(tile_index as u16);
+            let color = self.bus.tile_to_rgb(tile_data);
             let tile_y = (tile_index - start_tile) / 16;
             let tile_x = (tile_index - start_tile) % 16;
             for row in 0..8 {

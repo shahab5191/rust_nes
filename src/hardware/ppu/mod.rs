@@ -55,16 +55,82 @@ impl Ppu {
     }
 
     pub fn tick(&mut self) {
-        if self.cycle < 340 {
-            self.cycle += 1;
-        } else {
-            self.cycle = 0;
-            if self.scanline < 261 {
-                self.scanline += 1;
-            } else {
-                self.scanline = 0;
-                self.frame_complete = true;
+        self.cycle += 1;
+        if self.scanline == 261 {
+            if self.cycle == 1 {
+                // End of VBlank, clear VBlank flag
+                self.status &= !0xC0; // Clear VBlank and sprite 0 hit flags
+            } else if self.cycle >= 280 && self.cycle < 304 {
+                // Pre-render scanline, reset PPU state
+                self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
+            } else if self.cycle >= 1 && self.cycle < 256 {
+                // Visible scanline, reset PPU state
+                self.vram_addr = (self.vram_addr & 0x7FE0) | (self.temp_addr & 0x001F);
             }
+        } else if self.scanline >= 0 && self.scanline < 240 {
+            // Visible scanlines
+            if self.cycle >= 1 && self.cycle <= 256 {
+                // Render pixel logic
+            } else if self.cycle == 257 {
+                // Reset horizontal bits of vram_addr from temp_addr (for next scanline's start)
+                self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
+            } else if self.cycle == 328 {
+            }
+        } else if self.scanline == 240 {
+        } else if self.scanline >= 241 && self.scanline < 261 {
+            // Post-render scanlines
+            if self.scanline == 241 && self.cycle == 1 {
+                // Start of VBlank, set VBlank flag
+                self.status |= 0x80; // Set VBlank flag
+                self.frame_complete = true; // Indicate frame completion
+                if (self.control >> 7) & 0x01 != 0 {
+                    // If NMI is enabled, trigger NMI
+                    // This would typically be handled by the CPU
+                    eprintln!("NMI Triggered");
+                }
+            }
+        }
+        if self.cycle >= 341 {
+            self.cycle = 0;
+            self.scanline += 1;
+            if self.scanline >= 262 {
+                self.scanline = 0; // Reset scanline after reaching the end
+            }
+        }
+    }
+
+    fn read_vram(&mut self, addr: u16, cartridge: &Cartridge) -> Option<u8> {
+        let mapped_addr = addr & 0x3FFF; // Mask to 14 bits
+        if mapped_addr < 0x2000 {
+            // Nametable or palette memory
+            self.memory.read_nametable(mapped_addr)
+        } else if mapped_addr < 0x3F00 {
+            // CHR ROM
+            cartridge.mapper.ppu_read(mapped_addr)
+        } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
+            // Palette memory
+            self.memory.read_palette(mapped_addr)
+        } else {
+            // Invalid address
+            eprintln!("PPU Read: Invalid address 0x{:04X}", addr);
+            None
+        }
+    }
+
+    fn write_vram(&mut self, addr: u16, value: u8, cartridge: &mut Cartridge) {
+        let mapped_addr = addr & 0x3FFF; // Mask to 14 bits
+        if mapped_addr < 0x2000 {
+            // Nametable or palette memory
+            self.memory.write_nametable(mapped_addr, value);
+        } else if mapped_addr < 0x3F00 {
+            // CHR ROM
+            cartridge.mapper.ppu_write(mapped_addr, value);
+        } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
+            // Palette memory
+            self.memory.write_palette(mapped_addr, value);
+        } else {
+            // Invalid address
+            eprintln!("PPU Write: Invalid address 0x{:04X}", addr);
         }
     }
 
@@ -72,29 +138,34 @@ impl Ppu {
         match addr & 0x2007 {
             0x2002 => {
                 // PPUSTATUS
-                let data = self.status;
-                self.status &= 0x7F; // clear VBlank
+                let value = self.status.clone();
+                self.status &= !0x80;
                 self.addr_latch = false;
-                Some(data)
+                self.scroll_latch = false;
+                Some(value)
             }
             0x2004 => {
                 // OAMDATA
-                Some(self.oam_data[self.oam_addr as usize])
+                let val = Some(self.oam_data[self.oam_addr as usize]);
+                self.oam_addr = self.oam_addr.wrapping_add(1);
+                val
             }
             0x2007 => {
                 // PPUDATA
-                let addr = self.vram_addr & 0x3FFF;
-                let result = if addr < 0x3F00 {
-                    let buffered = self.buffered_data;
-                    self.buffered_data = cartridge.mapper.ppu_read(addr).unwrap_or(0);
-                    buffered
+                let value = self.read_vram(addr, cartridge);
+                let result: Option<u8>;
+                if addr & 0x3FFF >= 0x3F00 {
+                    // Palette memory is imidiately read
+                    result = value;
                 } else {
-                    // Palette data is immediate
-                    cartridge.mapper.ppu_read(addr).unwrap_or(0)
-                };
-                // Increment address
-                self.vram_addr += if self.control & 0x04 != 0 { 32 } else { 1 };
-                Some(result)
+                    // Regular VRAM read is delayed
+                    result = Some(self.buffered_data);
+                }
+                self.buffered_data = value.unwrap_or(0);
+                self.vram_addr =
+                    self.vram_addr
+                        .wrapping_add(if self.control & 0x04 != 0 { 32 } else { 1 });
+                result
             }
             _ => Some(0),
         }
@@ -146,8 +217,10 @@ impl Ppu {
             0x2007 => {
                 // PPUDATA
                 let addr = self.vram_addr & 0x3FFF;
-                cartridge.mapper.ppu_write(addr, value);
-                self.vram_addr += if self.control & 0x04 != 0 { 32 } else { 1 };
+                self.write_vram(addr, value, cartridge);
+                self.vram_addr =
+                    self.vram_addr
+                        .wrapping_add(if self.control & 0x04 != 0 { 32 } else { 1 });
             }
             _ => {}
         }

@@ -14,16 +14,16 @@ impl Memory {
         }
     }
 
-    pub fn read_nametable(&self, address: u16, mut bus: &Bus) -> Option<u8> {
-        self.nametable(address)
+    pub fn read_nametable(&self, address: u16) -> Option<u8> {
+        self.nametable.get(address as usize).copied()
     }
 
     pub fn write_nametable(&mut self, address: u16, value: u8) {
         self.nametable[address as usize] = value;
     }
 
-    pub fn read_palette(&self, address: u16) -> u8 {
-        self.palette[address as usize]
+    pub fn read_palette(&self, address: u16) -> Option<u8> {
+        self.palette.get(address as usize).copied()
     }
 
     pub fn write_palette(&mut self, address: u16, value: u8) {

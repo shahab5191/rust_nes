@@ -97,7 +97,7 @@ impl Cartridge {
             _ => panic!("Unsupported mapper: {}", mapper),
         };
 
-        println!("Mapper: {:?}", mapper);
+        println!("Mapper: {:?}", mapper.chr);
 
         self.mapper = mapper;
         self.mirroring = mirroring;
