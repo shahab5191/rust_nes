@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use super::cpu::opcode;
 use super::ppu::Ppu;
 use super::{
     cartridge::Cartridge,
@@ -16,6 +19,7 @@ pub struct Bus {
     pub memory: Memory,
     pub ppu: Ppu,
     pub cartridge: Cartridge,
+    pub assembly: HashMap<u16, String>,
 }
 
 impl Bus {
@@ -25,6 +29,7 @@ impl Bus {
             memory: Memory::new(),
             ppu: Ppu::new(),
             cartridge: Cartridge::new(),
+            assembly: HashMap::new(),
         };
         return bus;
     }
@@ -44,7 +49,7 @@ impl Bus {
             AddressMode::AbsoluteY => 3,
             AddressMode::Implicit => 1,
             AddressMode::Accumulator => 1,
-            AddressMode::Relative => 1,
+            AddressMode::Relative => 2,
         };
         println!("Increament pc by {}", value);
         let new_pc = pc.wrapping_add(value);
@@ -77,14 +82,14 @@ impl Bus {
         }
     }
 
-    pub fn read_instruct(&self) -> u8 {
+    pub fn read_instruct(&mut self) -> u8 {
         let pc = self.cpu.get_counter();
-        self.memory.read(pc)
+        self.read(pc)
     }
 
-    pub fn read_next(&self) -> u8 {
+    pub fn read_next(&mut self) -> u8 {
         let pc = self.cpu.get_counter();
-        self.memory.read(pc.wrapping_add(1))
+        self.read(pc.wrapping_add(1))
     }
 
     pub fn read_word(&mut self, address: u16) -> u16 {
@@ -111,7 +116,18 @@ impl Bus {
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
-        self.memory.write(address, value)
+        if address < 0x2000 {
+            self.memory.write(address % 0x0800, value);
+        } else if address < 0x4000 {
+            self.ppu.write_register(address, value, &mut self.cartridge);
+        } else if address < 0x4018 {
+            // APU and I/O registers - Implement later
+        } else if address < 0x4020 {
+            // Normally disabled
+        } else {
+            // Cartridge memory
+            self.cartridge.mapper.cpu_write(address, value);
+        }
     }
 
     pub fn stack_push(&mut self, value: u8) {
@@ -164,9 +180,11 @@ impl Bus {
                 address: 0,
                 cycles: 0,
             },
+
             AddressMode::Relative => {
-                let relative = self.read_next() as i32;
-                let pc = (self.cpu.get_counter() as i32).wrapping_add(relative);
+                let relative = self.read_next() as i8;
+                println!("Relative address: {}", relative);
+                let pc = (self.cpu.get_counter()).wrapping_add_signed(relative as i16);
                 ReadAddressWithModeResult {
                     value: 0,
                     address: pc as u16,
@@ -349,5 +367,96 @@ impl Bus {
             }
         }
         rgb_data
+    }
+
+    pub fn reset(&mut self) {
+        self.cpu.reset();
+        self.memory.reset();
+        self.ppu.reset();
+        self.cartridge.reset();
+        let reset_vector = self.read_word(0xFFFC);
+        println!(
+            "Resetting CPU, setting PC to reset vector: {:#04x}",
+            reset_vector
+        );
+        self.cpu.set_counter(reset_vector);
+        println!(
+            "CPU reset complete, PC set to {:#04x}",
+            self.cpu.get_counter()
+        );
+    }
+
+    fn create_disassembled_line(&mut self, address: u16) -> String {
+        /// Create a disassembled line for the given address
+        /// # Arguments
+        /// * `address` - The address to disassemble
+        /// # Returns
+        /// * A string representing the disassembled instruction at the given address
+        let opcode = self.memory.read(address);
+        let instruction = opcode::get_instruction(opcode);
+        let disassembled;
+        if let Some(instruction) = instruction {
+            let (param, _) = self.get_parameters(&instruction.address_mode, address);
+            disassembled = format!("{:04X}: {} {}", address, instruction.name, param);
+        } else {
+            disassembled = format!("{:04X}: {:02X} <unknown>", address, opcode);
+        }
+        disassembled
+    }
+
+    fn update_assembly(&mut self, address: u16) {
+        if self.assembly.contains_key(&address) {
+            self.assembly.remove(&address);
+            let instruction = opcode::get_instruction(self.memory.read(address));
+            if let Some(instruction) = instruction {
+                let (_, size) = self.get_parameters(&instruction.address_mode, address);
+                for i in 1..size {
+                    let next_address = address.wrapping_add(i);
+                    if self.assembly.contains_key(&next_address) {
+                        self.assembly.remove(&next_address);
+                    }
+                }
+            }
+            let disassembled_line = self.create_disassembled_line(address);
+            self.assembly.insert(address, disassembled_line);
+        }
+    }
+
+    fn get_parameters(&mut self, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
+        match addr_mode {
+            AddressMode::Immidiate => (format!("#${:02X}", self.read(addr + 1)), 2),
+            AddressMode::ZeroPage => (format!("${:02X}", self.read(addr + 1)), 2),
+            AddressMode::ZeroPageX => (format!("${:02X}, X", self.read(addr + 1)), 2),
+            AddressMode::ZeroPageY => (format!("${:02X}, Y", self.read(addr + 1)), 2),
+            AddressMode::Absolute => (format!("${:04X}", self.read_word(addr + 1)), 3),
+            AddressMode::AbsoluteX => (format!("${:04X}, X", self.read_word(addr + 1)), 3),
+            AddressMode::AbsoluteY => (format!("${:04X}, Y", self.read_word(addr + 1)), 3),
+            AddressMode::Indirect => (format!("(${:04X})", self.read_word(addr + 1)), 3),
+            AddressMode::IndirectX => (format!("(${:02X}, X)", self.read(addr + 1)), 2),
+            AddressMode::IndirectY => (format!("(${:02X}), Y", self.read(addr + 1)), 2),
+            AddressMode::Relative => (format!("${:02X}", self.read(addr + 1)), 2),
+            AddressMode::Implicit => (String::new(), 1),
+            AddressMode::Accumulator => (String::from("A"), 1),
+        }
+    }
+
+    pub fn set_assembly(&mut self, assembly: HashMap<u16, String>) {
+        self.assembly = assembly;
+    }
+
+    pub fn get_assembly(&self, address: u16) -> Option<String> {
+        self.assembly.get(&address).cloned()
+    }
+
+    pub fn insert_assembly(&mut self, address: u16) {
+        if self.assembly.contains_key(&address) {
+            self.assembly.remove(&address);
+        }
+        let disassembled_line = self.create_disassembled_line(address);
+        self.assembly.insert(address, disassembled_line);
+    }
+
+    pub fn assembly_contains_key(&self, address: u16) -> bool {
+        self.assembly.contains_key(&address)
     }
 }

@@ -1,5 +1,3 @@
-use crate::hardware::bus::Bus;
-
 #[derive(Debug, Clone, Copy)]
 pub struct Memory {
     nametable: [u8; 4096],

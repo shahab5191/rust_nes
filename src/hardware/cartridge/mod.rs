@@ -103,4 +103,10 @@ impl Cartridge {
         self.mirroring = mirroring;
         Ok(())
     }
+
+    pub fn reset(&mut self) {
+        // Reset the cartridge state if needed
+        // For now, we just reset the mapper
+        self.mapper.reset();
+    }
 }

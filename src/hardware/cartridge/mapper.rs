@@ -7,6 +7,8 @@ pub trait Mapper: Debug {
     fn ppu_read(&self, addr: u16) -> Option<u8>;
     fn ppu_write(&mut self, addr: u16, value: u8) -> bool;
 
+    fn reset(&mut self);
+
     fn box_clone(&self) -> Box<dyn Mapper>;
 }
 
@@ -136,5 +138,12 @@ impl Mapper for Mapper0 {
 
     fn box_clone(&self) -> Box<dyn Mapper> {
         Box::new(self.clone())
+    }
+
+    fn reset(&mut self) {
+        self.prg_ram.fill(0);
+        if self.chr_is_ram {
+            self.chr.fill(0);
+        }
     }
 }

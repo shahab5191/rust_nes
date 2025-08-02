@@ -42,16 +42,73 @@ impl Display for AddressMode {
 }
 
 fn update_assembly(bus: &mut Bus, val: &ReadAddressWithModeResult) {
-    bus.memory.insert_assembly(val.address);
+    bus.insert_assembly(val.address);
 }
 
-fn log_instruct(instruct: &str, address_mode: &AddressMode) {
-    println!("[ {0} {1} ]", instruct, address_mode);
+fn log_instruct(instruct_name: &str, address_mode: &AddressMode, bus: Option<&mut Bus>) {
+    match bus {
+        Some(b) => {
+            let instruct: String = match address_mode {
+                AddressMode::Implicit => format!("{0:x}", b.read_instruct()),
+                AddressMode::Immidiate => {
+                    format!("{0:x} #${1:02X}", b.read_instruct(), b.read_next())
+                }
+                AddressMode::Accumulator => format!("{0:x}", b.read_instruct()),
+                AddressMode::ZeroPage => {
+                    format!("{0:x} ${1:02X}", b.read_instruct(), b.read_next())
+                }
+                AddressMode::ZeroPageX => {
+                    format!("{0:x} ${1:02X}", b.read_instruct(), b.read_next())
+                }
+                AddressMode::ZeroPageY => {
+                    format!("{0:x} ${1:02X}, Y", b.read_instruct(), b.read_next())
+                }
+                AddressMode::Absolute => {
+                    let addr = b.read_next_word();
+                    format!("{0:x} ${1:04X}", b.read_instruct(), addr)
+                }
+                AddressMode::AbsoluteX => {
+                    let addr = b.read_next_word();
+                    format!("{0:x} ${1:04X}, X", b.read_instruct(), addr)
+                }
+                AddressMode::AbsoluteY => {
+                    let addr = b.read_next_word();
+                    format!("{0:x} ${1:04X}, Y", b.read_instruct(), addr)
+                }
+                AddressMode::Relative => {
+                    let offset = b.read_next();
+                    format!("{0:x} ${1:02X}", b.read_instruct(), offset)
+                }
+                AddressMode::Indirect => {
+                    let addr = b.read_next_word();
+                    format!("{0:x} (${1:04X})", b.read_instruct(), addr)
+                }
+                AddressMode::IndirectX => {
+                    let addr = b.read_next();
+                    format!("{0:x} (${1:02X}, X)", b.read_instruct(), addr)
+                }
+                AddressMode::IndirectY => {
+                    let addr = b.read_next();
+                    format!("{0:x} (${1:02X}), Y", b.read_instruct(), addr)
+                }
+            };
+            println!(
+                "{0:x}: {1} - [ {2} {3} ]",
+                b.cpu.get_counter(),
+                instruct,
+                instruct_name,
+                address_mode
+            );
+        }
+        None => {
+            println!("[ {0} {1} ]", instruct_name, address_mode);
+        }
+    }
 }
 
 pub fn adc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Add with carry
-    log_instruct("ADC", &address_mode);
+    log_instruct("ADC", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let result: u16 =
         (val.value as u16) + (bus.cpu.get(Registers::A) as u16) + (bus.cpu.get_carry() as u16);
@@ -79,7 +136,7 @@ pub fn adc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn and(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Logical AND
-    log_instruct("AND", &address_mode);
+    log_instruct("AND", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let result = bus.cpu.get(Registers::A) & val.value;
     bus.cpu.set_zero(result == 0);
@@ -102,7 +159,7 @@ pub fn and(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn asl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Arithmetic shift left
-    log_instruct("ASL", &address_mode);
+    log_instruct("ASL", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let result = val.value << 1;
     bus.cpu.set_carry(val.value & 0x80 != 0);
@@ -123,7 +180,7 @@ pub fn asl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bcc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if carry clear
-    log_instruct("BCC", &address_mode);
+    log_instruct("BCC", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_carry() == 0 {
@@ -140,7 +197,7 @@ pub fn bcc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bcs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if carry set
-    log_instruct("BCS", &address_mode);
+    log_instruct("BCS", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_carry() != 0 {
@@ -157,7 +214,7 @@ pub fn bcs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn beq(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if equal
-    log_instruct("BEQ", &address_mode);
+    log_instruct("BEQ", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_zero() != 0 {
@@ -176,7 +233,7 @@ pub fn beq(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bit(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Bit test
-    log_instruct("BIT", &address_mode);
+    log_instruct("BIT", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let result = bus.cpu.get(Registers::A) & val.value;
     bus.cpu.set_zero(result == 0);
@@ -193,7 +250,7 @@ pub fn bit(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bmi(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if minus
-    log_instruct("BMI", &address_mode);
+    log_instruct("BMI", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_negative() != 0 {
@@ -212,7 +269,7 @@ pub fn bmi(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bne(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if not Equal
-    log_instruct("BNE", &address_mode);
+    log_instruct("BNE", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_zero() == 0 {
@@ -231,7 +288,7 @@ pub fn bne(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bpl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if positive
-    log_instruct("BPL", &address_mode);
+    log_instruct("BPL", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_negative() == 0 {
@@ -251,7 +308,7 @@ pub fn bpl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn brk(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Force intrupt
-    log_instruct("BRK", &address_mode);
+    log_instruct("BRK", &address_mode, Some(bus));
     bus.stack_push_word(bus.cpu.get_counter() + 2);
     bus.stack_push(bus.cpu.get(Registers::P));
     bus.cpu.set_break(true);
@@ -265,7 +322,7 @@ pub fn brk(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bvc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if Overflow clear
-    log_instruct("BVC", &address_mode);
+    log_instruct("BVC", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_overflow() == 0 {
@@ -284,7 +341,7 @@ pub fn bvc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn bvs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Branch if Overflow set
-    log_instruct("BVS", &address_mode);
+    log_instruct("BVS", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let mut cycles = val.cycles;
     if bus.cpu.get_overflow() != 0 {
@@ -303,7 +360,7 @@ pub fn bvs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn clc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Clear Carry Flag
-    log_instruct("CLC", &address_mode);
+    log_instruct("CLC", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_carry(false);
     2 // CLC takes 2 cycles
@@ -311,7 +368,7 @@ pub fn clc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn cld(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Clear Decimal Mode
-    log_instruct("CLD", &address_mode);
+    log_instruct("CLD", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_decimal(false);
     2 // CLD takes 2 cycles
@@ -319,7 +376,7 @@ pub fn cld(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn cli(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Set Interrupt Disable
-    log_instruct("CLI", &address_mode);
+    log_instruct("CLI", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_overflow(false);
     2 // CLI takes 2 cycles
@@ -327,7 +384,7 @@ pub fn cli(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn clv(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Clear Overflow FLag
-    log_instruct("CLV", &address_mode);
+    log_instruct("CLV", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_overflow(true);
     2 // CLV takes 2 cycles
@@ -335,7 +392,7 @@ pub fn clv(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn cmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Compare
-    log_instruct("CMP", &address_mode);
+    log_instruct("CMP", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let acc = bus.cpu.a;
     let res = acc as i8 - val.value as i8;
@@ -363,7 +420,7 @@ pub fn cmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn cpx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Compare X Register
-    log_instruct("CPX", &address_mode);
+    log_instruct("CPX", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let reg = bus.cpu.x;
     let res = reg as i8 - val.value as i8;
@@ -386,7 +443,7 @@ pub fn cpx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn cpy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Compare Y Register
-    log_instruct("CPY", &address_mode);
+    log_instruct("CPY", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let reg = bus.cpu.y;
     let res = reg as i8 - val.value as i8;
@@ -409,7 +466,7 @@ pub fn cpy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn dec(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Decrement Memory
-    log_instruct("DEC", &address_mode);
+    log_instruct("DEC", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = val.value.wrapping_sub(1);
@@ -436,7 +493,7 @@ pub fn dex(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     if address_mode != AddressMode::Implicit {
         panic!("Only Implicit address mode is acceptable for DEX!");
     }
-    log_instruct("DEX", &address_mode);
+    log_instruct("DEX", &address_mode, Some(bus));
     let val = bus.cpu.x;
     let res = val.wrapping_sub(1);
     bus.cpu.set_zero(res == 0);
@@ -451,7 +508,7 @@ pub fn dey(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     if address_mode != AddressMode::Implicit {
         panic!("Only Implicit address mode is acceptable for DEY!");
     }
-    log_instruct("DEY", &address_mode);
+    log_instruct("DEY", &address_mode, Some(bus));
     let val = bus.cpu.y;
     let res = val.wrapping_sub(1);
     bus.cpu.set_zero(res == 0);
@@ -463,7 +520,7 @@ pub fn dey(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn eor(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Exclusive OR
-    log_instruct("EOR", &address_mode);
+    log_instruct("EOR", &address_mode, Some(bus));
     let acc = bus.cpu.a;
     let val = bus.read_address_with_mode(&address_mode);
     let res = acc ^ val.value;
@@ -487,7 +544,7 @@ pub fn eor(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn inc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Increment Memory
-    log_instruct("INC", &address_mode);
+    log_instruct("INC", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = val.value.wrapping_add(1);
@@ -511,7 +568,7 @@ pub fn inc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn inx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Increment X Register
-    log_instruct("INX", &address_mode);
+    log_instruct("INX", &address_mode, Some(bus));
     let reg = bus.cpu.x;
     let res = reg.wrapping_add(1);
     bus.cpu.set_zero(res == 0);
@@ -523,7 +580,7 @@ pub fn inx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn iny(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Increment Y Register
-    log_instruct("INY", &address_mode);
+    log_instruct("INY", &address_mode, Some(bus));
     let reg = bus.cpu.y;
     let res = reg.wrapping_add(1);
     bus.cpu.set_zero(res == 0);
@@ -535,7 +592,7 @@ pub fn iny(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn jmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Jump
-    log_instruct("JMP", &address_mode);
+    log_instruct("JMP", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.cpu.set_counter(val.address);
     update_assembly(bus, &val);
@@ -548,7 +605,7 @@ pub fn jmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn jsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Jump to Subroutine
-    log_instruct("JSR", &address_mode);
+    log_instruct("JSR", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.stack_push_word(bus.cpu.get_counter().wrapping_sub(1));
     bus.cpu.set_counter(val.address);
@@ -558,7 +615,7 @@ pub fn jsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn lda(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Load Accumulator
-    log_instruct("LDA", &address_mode);
+    log_instruct("LDA", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.cpu.set_zero(val.value == 0);
     bus.cpu.set_negative(val.value & 0x80 != 0);
@@ -580,7 +637,7 @@ pub fn lda(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn ldx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Load X Register
-    log_instruct("LDX", &address_mode);
+    log_instruct("LDX", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.cpu.set_zero(val.value == 0);
     bus.cpu.set_negative(val.value & 0x80 != 0);
@@ -599,7 +656,7 @@ pub fn ldx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn ldy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Load Y Register
-    log_instruct("LDY", &address_mode);
+    log_instruct("LDY", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.cpu.set_zero(val.value == 0);
     bus.cpu.set_negative(val.value & 0x80 != 0);
@@ -618,7 +675,7 @@ pub fn ldy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn lsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Logical Shift Right
-    log_instruct("LSR", &address_mode);
+    log_instruct("LSR", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = val.value >> 1;
@@ -644,14 +701,14 @@ pub fn lsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn nop(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // No Operation
-    log_instruct("NOP", &address_mode);
+    log_instruct("NOP", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     2 // NOP takes 2 cycles
 }
 
 pub fn ora(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Logical Inclusive OR
-    log_instruct("ORA", &address_mode);
+    log_instruct("ORA", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let res = bus.cpu.get(Registers::A) | val.value;
     bus.cpu.set_zero(res == 0);
@@ -674,7 +731,7 @@ pub fn ora(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn pha(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Push Accumulator
-    log_instruct("PHA", &address_mode);
+    log_instruct("PHA", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.stack_push(bus.cpu.get(Registers::A));
     3 // PHA takes 3 cycles
@@ -682,7 +739,7 @@ pub fn pha(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn php(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Push Processor Status
-    log_instruct("PHP", &address_mode);
+    log_instruct("PHP", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.stack_push(bus.cpu.get(Registers::P));
     3 // PHP takes 3 cycles
@@ -690,7 +747,7 @@ pub fn php(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn pla(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Pull Accumulator
-    log_instruct("PLA", &address_mode);
+    log_instruct("PLA", &address_mode, Some(bus));
     let val = bus.stack_pull();
     bus.cpu.set_zero(val == 0);
     bus.cpu.set_negative(val & 0x80 != 0);
@@ -701,7 +758,7 @@ pub fn pla(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn plp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Pull Processor Status
-    log_instruct("PLP", &address_mode);
+    log_instruct("PLP", &address_mode, Some(bus));
     let mut val = bus.stack_pull();
     let interrupt_disable = val & 0b0000_0100;
     bus.cpu.delayed_interrupt = Some(interrupt_disable != 0);
@@ -713,7 +770,7 @@ pub fn plp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn rol(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Rotate Left
-    log_instruct("ROL", &address_mode);
+    log_instruct("ROL", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = (val.value << 1) | bus.cpu.get_carry();
@@ -739,7 +796,7 @@ pub fn rol(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn ror(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Rotate Right
-    log_instruct("ROR", &address_mode);
+    log_instruct("ROR", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = (val.value >> 1) | (bus.cpu.get_carry() << 7);
@@ -765,7 +822,7 @@ pub fn ror(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn rti(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Return from Interrupt
-    log_instruct("RTI", &address_mode);
+    log_instruct("RTI", &address_mode, Some(bus));
     let flags = bus.stack_pull();
     bus.cpu.set(Registers::P, flags);
     let pc = bus.stack_pull_word();
@@ -775,7 +832,7 @@ pub fn rti(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn rts(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Return from Subroutine
-    log_instruct("RTS", &address_mode);
+    log_instruct("RTS", &address_mode, Some(bus));
     let pc = bus.stack_pull_word();
     bus.cpu.set_counter(pc + 1);
     6 // RTS takes 6 cycles
@@ -783,7 +840,7 @@ pub fn rts(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn sbc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Subtract with Carry
-    log_instruct("SBC", &address_mode);
+    log_instruct("SBC", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let acc = bus.cpu.get(Registers::A);
     let carry = bus.cpu.get_carry();
@@ -811,7 +868,7 @@ pub fn sbc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn sec(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Set Carry Flag
-    log_instruct("SEC", &address_mode);
+    log_instruct("SEC", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_carry(true);
     2 // SEC takes 2 cycles
@@ -819,7 +876,7 @@ pub fn sec(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn sed(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Set Decimal Flag
-    log_instruct("SED", &address_mode);
+    log_instruct("SED", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_decimal(true);
     2 // SED takes 2 cycles
@@ -827,7 +884,7 @@ pub fn sed(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn sei(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Set Interrupt Disable
-    log_instruct("SEI", &address_mode);
+    log_instruct("SEI", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
     bus.cpu.set_interrupt_disable(true);
     2 // SEI takes 2 cycles
@@ -835,7 +892,7 @@ pub fn sei(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn sta(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Store Accumulator
-    log_instruct("STA", &address_mode);
+    log_instruct("STA", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.write(val.address, bus.cpu.get(Registers::A));
     bus.increment_pc(&address_mode);
@@ -854,7 +911,7 @@ pub fn sta(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn stx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Store X Register
-    log_instruct("STX", &address_mode);
+    log_instruct("STX", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.write(val.address, bus.cpu.get(Registers::X));
     bus.increment_pc(&address_mode);
@@ -869,7 +926,7 @@ pub fn stx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn sty(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Store Y Register
-    log_instruct("STY", &address_mode);
+    log_instruct("STY", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.write(val.address, bus.cpu.get(Registers::Y));
     bus.increment_pc(&address_mode);
@@ -884,7 +941,7 @@ pub fn sty(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn tax(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Transfer Accumulator to X
-    log_instruct("TAX", &address_mode);
+    log_instruct("TAX", &address_mode, Some(bus));
     let val = bus.cpu.get(Registers::A);
     bus.cpu.set(Registers::X, val);
     bus.cpu.set_zero(val == 0);
@@ -895,7 +952,7 @@ pub fn tax(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn tay(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Transfer Accumulator to Y
-    log_instruct("TAY", &address_mode);
+    log_instruct("TAY", &address_mode, Some(bus));
     let val = bus.cpu.get(Registers::A);
     bus.cpu.set(Registers::Y, val);
     bus.cpu.set_zero(val == 0);
@@ -906,7 +963,7 @@ pub fn tay(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn tsx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Transfer Stack Pointer to X
-    log_instruct("TSX", &address_mode);
+    log_instruct("TSX", &address_mode, Some(bus));
     let val = bus.cpu.get(Registers::S);
     bus.cpu.set(Registers::X, val);
     bus.cpu.set_zero(val == 0);
@@ -917,7 +974,7 @@ pub fn tsx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn txa(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Transfer X to Accumulator
-    log_instruct("TXA", &address_mode);
+    log_instruct("TXA", &address_mode, Some(bus));
     let val = bus.cpu.get(Registers::X);
     bus.cpu.set(Registers::A, val);
     bus.cpu.set_zero(val == 0);
@@ -928,7 +985,7 @@ pub fn txa(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn txs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Transfer X to Stack Pointer
-    log_instruct("TXS", &address_mode);
+    log_instruct("TXS", &address_mode, Some(bus));
     let val = bus.cpu.get(Registers::X);
     bus.cpu.set(Registers::S, val);
     bus.increment_pc(&address_mode);
@@ -937,7 +994,7 @@ pub fn txs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 
 pub fn tya(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Transfer Y to Accumulator
-    log_instruct("TYA", &address_mode);
+    log_instruct("TYA", &address_mode, Some(bus));
     let val = bus.cpu.get(Registers::Y);
     bus.cpu.set(Registers::A, val);
     bus.cpu.set_zero(val == 0);

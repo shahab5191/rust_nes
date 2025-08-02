@@ -166,4 +166,15 @@ impl CPU {
         println!("status: {0:08b}", self.p);
         println!("counter: {0:b}", self.pc);
     }
+
+    pub fn reset(&mut self) {
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.s = 0xFD; // Stack starts at 0xFD
+        self.pc = 0x0;
+        self.p = 0b00100000; // Set unused bit, clear others
+        self.delayed_interrupt = None;
+        println!("CPU reset.");
+    }
 }
