@@ -16,14 +16,15 @@ pub struct CpuState {
     pc: u16,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Nes {
     cpu_state: CpuState,
+    fps: u32,
     emulator: Hardware,
     last_tick: Option<Instant>,
     running: bool,
-    chr_1_buffer: Vec<u8>,
-    chr_2_buffer: Vec<u8>,
+    chr_1_buffer: image::Handle,
+    chr_2_buffer: image::Handle,
 }
 
 #[derive(Debug, Clone)]
@@ -44,11 +45,12 @@ impl Application for Nes {
         (
             Nes {
                 cpu_state: CpuState::default(),
+                fps: 60,
                 last_tick: None,
                 running: false,
                 emulator: Hardware::new(),
-                chr_1_buffer: Vec::new(),
-                chr_2_buffer: Vec::new(),
+                chr_1_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
+                chr_2_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
             },
             Command::none(),
         )
@@ -65,8 +67,10 @@ impl Application for Nes {
                 self.emulator.load_rom(path.as_str()).unwrap_or_else(|err| {
                     eprintln!("Error loading ROM: {}", err);
                 });
-                self.chr_1_buffer = self.emulator.get_chr_image(0).to_vec();
-                self.chr_2_buffer = self.emulator.get_chr_image(1).to_vec();
+                self.chr_1_buffer =
+                    image::Handle::from_pixels(128, 128, self.emulator.get_chr_image(0).to_vec());
+                self.chr_2_buffer =
+                    image::Handle::from_pixels(128, 128, self.emulator.get_chr_image(1).to_vec());
                 self.running = true;
             }
             NesMessage::ChangeCpuState(new_state) => {
@@ -78,10 +82,11 @@ impl Application for Nes {
                 // For this example, we'll just update the PC and A registers.
                 if self.running {
                     let now = Instant::now();
-                    println!(
-                        "Tick! Time since last tick: {:?}",
-                        self.last_tick.map(|t| now - t)
-                    );
+                    // println!(
+                    //     "Tick! Time since last tick: {:?}",
+                    //     self.last_tick.map(|t| now - t)
+                    // );
+                    self.fps = (1.0 / (now - self.last_tick.unwrap_or(now)).as_secs_f32()) as u32;
                     self.last_tick = Some(now);
                     self.emulator.tick().unwrap_or_else(|err| {
                         eprintln!("Error during tick: {}", err);
@@ -110,20 +115,19 @@ impl Application for Nes {
             self.cpu_state.pc
         ));
 
+        let fps_text = text(format!("FPS: {}", self.fps));
+
         let load_button = Button::new(text("Load ROM"))
             .on_press(NesMessage::LoadRom(String::from("roms/super-mario.nes")));
 
-        let chr_1_handle = image::Handle::from_pixels(128, 128, self.chr_1_buffer.clone());
-        let chr_2_handle = image::Handle::from_pixels(128, 128, self.chr_2_buffer.clone());
-
-        let chr_1_image = Image::<image::Handle>::new(chr_1_handle)
+        let chr_1_image = Image::<image::Handle>::new(self.chr_1_buffer.clone())
             .width(512)
             .height(512);
-        let chr_2_image = Image::<image::Handle>::new(chr_2_handle)
+        let chr_2_image = Image::<image::Handle>::new(self.chr_2_buffer.clone())
             .width(512)
             .height(512);
 
-        let col1 = row![cpu_state_text, load_button];
+        let col1 = row![fps_text, cpu_state_text, load_button];
         let col2 = row![chr_1_image, chr_2_image];
         column![col1, col2].into()
     }
