@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::hardware::bus::{Bus, ReadAddressWithModeResult};
+use crate::hardware::bus::Bus;
 
 use super::Registers;
 
@@ -41,69 +41,22 @@ impl Display for AddressMode {
     }
 }
 
-fn update_assembly(bus: &mut Bus, val: &ReadAddressWithModeResult) {
-    bus.insert_assembly(val.address);
-}
-
 fn log_instruct(instruct_name: &str, address_mode: &AddressMode, bus: Option<&mut Bus>) {
-    match bus {
-        Some(b) => {
-            let instruct: String = match address_mode {
-                AddressMode::Implicit => format!("{0:x}", b.read_instruct()),
-                AddressMode::Immidiate => {
-                    format!("{0:x} #${1:02X}", b.read_instruct(), b.read_next())
-                }
-                AddressMode::Accumulator => format!("{0:x}", b.read_instruct()),
-                AddressMode::ZeroPage => {
-                    format!("{0:x} ${1:02X}", b.read_instruct(), b.read_next())
-                }
-                AddressMode::ZeroPageX => {
-                    format!("{0:x} ${1:02X}", b.read_instruct(), b.read_next())
-                }
-                AddressMode::ZeroPageY => {
-                    format!("{0:x} ${1:02X}, Y", b.read_instruct(), b.read_next())
-                }
-                AddressMode::Absolute => {
-                    let addr = b.read_next_word();
-                    format!("{0:x} ${1:04X}", b.read_instruct(), addr)
-                }
-                AddressMode::AbsoluteX => {
-                    let addr = b.read_next_word();
-                    format!("{0:x} ${1:04X}, X", b.read_instruct(), addr)
-                }
-                AddressMode::AbsoluteY => {
-                    let addr = b.read_next_word();
-                    format!("{0:x} ${1:04X}, Y", b.read_instruct(), addr)
-                }
-                AddressMode::Relative => {
-                    let offset = b.read_next();
-                    format!("{0:x} ${1:02X}", b.read_instruct(), offset)
-                }
-                AddressMode::Indirect => {
-                    let addr = b.read_next_word();
-                    format!("{0:x} (${1:04X})", b.read_instruct(), addr)
-                }
-                AddressMode::IndirectX => {
-                    let addr = b.read_next();
-                    format!("{0:x} (${1:02X}, X)", b.read_instruct(), addr)
-                }
-                AddressMode::IndirectY => {
-                    let addr = b.read_next();
-                    format!("{0:x} (${1:02X}), Y", b.read_instruct(), addr)
-                }
-            };
-            println!(
-                "{0:x}: {1} - [ {2} {3} ]",
-                b.cpu.get_counter(),
-                instruct,
-                instruct_name,
-                address_mode
-            );
-        }
-        None => {
-            println!("[ {0} {1} ]", instruct_name, address_mode);
-        }
-    }
+    // match bus {
+    //     Some(b) => {
+    //         let (instruct, _) = b.get_instruction_text(address_mode, None);
+    //         println!(
+    //             "{0:x}: {1} - [ {2} {3} ]",
+    //             b.cpu.get_counter(),
+    //             instruct,
+    //             instruct_name,
+    //             address_mode
+    //         );
+    //     }
+    //     None => {
+    //         println!("[ {0} {1} ]", instruct_name, address_mode);
+    //     }
+    // }
 }
 
 pub fn adc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
@@ -224,7 +177,6 @@ pub fn beq(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-        update_assembly(bus, &val);
     } else {
         bus.increment_pc(&address_mode);
     }
@@ -260,7 +212,6 @@ pub fn bmi(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-        update_assembly(bus, &val);
     } else {
         bus.increment_pc(&address_mode);
     }
@@ -279,7 +230,6 @@ pub fn bne(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-        update_assembly(bus, &val);
     } else {
         bus.increment_pc(&address_mode);
     }
@@ -299,7 +249,6 @@ pub fn bpl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
             cycles += 1;
         }
         bus.increment_pc(&address_mode);
-        update_assembly(bus, &val);
     } else {
         bus.increment_pc(&address_mode);
     }
@@ -332,7 +281,6 @@ pub fn bvc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-        update_assembly(bus, &val);
     } else {
         bus.increment_pc(&address_mode);
     }
@@ -351,7 +299,6 @@ pub fn bvs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-        update_assembly(bus, &val);
     } else {
         bus.increment_pc(&address_mode);
     }
@@ -595,7 +542,6 @@ pub fn jmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("JMP", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     bus.cpu.set_counter(val.address);
-    update_assembly(bus, &val);
     match address_mode {
         AddressMode::Absolute => 3,
         AddressMode::Indirect => 5,

@@ -1,3 +1,9 @@
+impl Default for Memory {
+    fn default() -> Self {
+        Memory::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Memory {
     mem: [u8; 0x800],
@@ -22,7 +28,6 @@ impl Memory {
         // Handling address mirroring in NES
         let real_address = address % 0x7ff;
         let value = self.mem[real_address as usize];
-        println!("Read: {0:08b}: {1:08b}", address, value);
         value
     }
 
@@ -36,7 +41,6 @@ impl Memory {
         if address < 0x2000 {
             let real_address = address % 0x800;
             self.mem[real_address as usize] = value;
-            println!("Write: {0:08b}: {1:08b}", address, value);
         } else {
             println!("Warning: Writing to non-ram address {:#04X}", address);
             return;

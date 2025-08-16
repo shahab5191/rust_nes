@@ -1,6 +1,12 @@
 mod memory;
-use super::{bus::Bus, cartridge::Cartridge};
+use super::cartridge::Cartridge;
 use memory::Memory;
+
+impl Default for Ppu {
+    fn default() -> Self {
+        Ppu::new()
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Ppu {

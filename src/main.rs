@@ -1,12 +1,10 @@
+use iced::{Application, Settings};
+use ui_iced::Nes;
+
 mod hardware;
-mod ui;
+mod ui_iced;
 mod utils;
 
 fn main() {
-    let mut device = hardware::Hardware::new();
-    device
-        .load_rom("roms/super-mario.nes")
-        .expect("Failed to load ROM");
-    let mut emulator_ui = ui::UI::new(device);
-    emulator_ui.run();
+    Nes::run(Settings::default()).expect("Failed to run NES application");
 }

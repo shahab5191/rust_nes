@@ -20,6 +20,12 @@ pub enum ScreenMirroring {
     FourScreen,
 }
 
+impl Default for Cartridge {
+    fn default() -> Self {
+        Cartridge::new()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Cartridge {
     pub mapper: Box<dyn Mapper>,
@@ -39,8 +45,6 @@ impl Cartridge {
         // Open the file
         let mut file = std::fs::File::open(file_path)?;
 
-        println!("File length: {}", file.metadata()?.len());
-
         let mut header_bytes = [0u8; 16];
         file.read_exact(&mut header_bytes)?;
         if &header_bytes[0..4] != b"NES\x1A" {
@@ -58,8 +62,6 @@ impl Cartridge {
         };
         // Process the header and load PRG and CHR ROMs
         // This is a simplified example; actual implementation may vary
-        println!("PRG ROM Size: {} KB", header.prg_rom_size * 16);
-        println!("CHR ROM Size: {} KB", header.chr_rom_size * 8);
 
         if header.mapper1 & 0x04 != 0 {
             file.seek(SeekFrom::Current(512))?;
@@ -96,8 +98,6 @@ impl Cartridge {
             )),
             _ => panic!("Unsupported mapper: {}", mapper),
         };
-
-        println!("Mapper: {:?}", mapper.chr);
 
         self.mapper = mapper;
         self.mirroring = mirroring;

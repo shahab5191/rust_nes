@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-
 use super::cpu::opcode;
+use super::enums::Registers;
 use super::ppu::Ppu;
 use super::{
     cartridge::Cartridge,
-    cpu::{CPU, Registers, instructions::AddressMode},
+    cpu::{CPU, instructions::AddressMode},
     memory::Memory,
 };
 pub struct ReadAddressWithModeResult {
@@ -13,13 +12,12 @@ pub struct ReadAddressWithModeResult {
     pub cycles: u8,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Bus {
     pub cpu: CPU,
     pub memory: Memory,
     pub ppu: Ppu,
     pub cartridge: Cartridge,
-    pub assembly: HashMap<u16, String>,
 }
 
 impl Bus {
@@ -29,7 +27,6 @@ impl Bus {
             memory: Memory::new(),
             ppu: Ppu::new(),
             cartridge: Cartridge::new(),
-            assembly: HashMap::new(),
         };
         return bus;
     }
@@ -51,7 +48,6 @@ impl Bus {
             AddressMode::Accumulator => 1,
             AddressMode::Relative => 2,
         };
-        println!("Increament pc by {}", value);
         let new_pc = pc.wrapping_add(value);
         self.cpu.set_counter(new_pc);
     }
@@ -101,8 +97,6 @@ impl Bus {
     pub fn read_word_buggy(&mut self, address: u16) -> u16 {
         let low = self.read(address);
         let high = if address & 0x00FF == 0x00FF {
-            println!("Buggy read at address {:#04x}", &address);
-            println!("Reading high byte from address {:#04x}", address & 0xFF00);
             self.read(address & 0xFF00)
         } else {
             self.read(address.wrapping_add(1))
@@ -183,7 +177,6 @@ impl Bus {
 
             AddressMode::Relative => {
                 let relative = self.read_next() as i8;
-                println!("Relative address: {}", relative);
                 let pc = (self.cpu.get_counter()).wrapping_add_signed(relative as i16);
                 ReadAddressWithModeResult {
                     value: 0,
@@ -227,7 +220,6 @@ impl Bus {
                 let crossed_page = (zero_page_pointer & 0xFF00) != (address & 0xFF00);
                 let mut cycles = 0;
                 if crossed_page {
-                    println!("Crossed page boundary in indirect indexed mode");
                     cycles = 1;
                 }
                 ReadAddressWithModeResult {
@@ -250,7 +242,6 @@ impl Bus {
                 let crossed_page = (operand & 0xFF00) != (address & 0xFF00);
                 let mut cycles = 0;
                 if crossed_page {
-                    println!("Crossed page boundary in absolute X mode");
                     cycles = 1;
                 }
                 ReadAddressWithModeResult {
@@ -265,7 +256,6 @@ impl Bus {
                 let crossed_page = (operand & 0xFF00) != (address & 0xFF00);
                 let mut cycles = 0;
                 if crossed_page {
-                    println!("Crossed page boundary in absolute Y mode");
                     cycles = 1;
                 }
                 ReadAddressWithModeResult {
@@ -276,9 +266,7 @@ impl Bus {
             }
             AddressMode::ZeroPage => {
                 let address = self.read_next() as u16;
-                println!("Zero page address: {:#04x}", address);
                 let value = self.read(address);
-                println!("Zero page value: {:#04x}", value);
                 ReadAddressWithModeResult {
                     value,
                     address,
@@ -375,88 +363,62 @@ impl Bus {
         self.ppu.reset();
         self.cartridge.reset();
         let reset_vector = self.read_word(0xFFFC);
-        println!(
-            "Resetting CPU, setting PC to reset vector: {:#04x}",
-            reset_vector
-        );
         self.cpu.set_counter(reset_vector);
-        println!(
-            "CPU reset complete, PC set to {:#04x}",
-            self.cpu.get_counter()
-        );
     }
 
-    fn create_disassembled_line(&mut self, address: u16) -> String {
-        /// Create a disassembled line for the given address
-        /// # Arguments
-        /// * `address` - The address to disassemble
-        /// # Returns
-        /// * A string representing the disassembled instruction at the given address
-        let opcode = self.memory.read(address);
+    pub fn create_disassembled_line(&mut self, address: u16) -> (String, u8) {
+        let opcode = self.read(address);
         let instruction = opcode::get_instruction(opcode);
         let disassembled;
+        let instruction_len: u8;
         if let Some(instruction) = instruction {
-            let (param, _) = self.get_parameters(&instruction.address_mode, address);
-            disassembled = format!("{:04X}: {} {}", address, instruction.name, param);
+            let (instruct, len) =
+                self.get_instruction_text(&instruction.address_mode, Some(address));
+            disassembled = format!(
+                "{0:04X}: {1} [ {2} {3} ]",
+                address, instruct, instruction.name, instruction.address_mode
+            );
+            instruction_len = len;
         } else {
             disassembled = format!("{:04X}: {:02X} <unknown>", address, opcode);
+            instruction_len = 1;
         }
-        disassembled
+        (disassembled, instruction_len)
     }
 
-    fn update_assembly(&mut self, address: u16) {
-        if self.assembly.contains_key(&address) {
-            self.assembly.remove(&address);
-            let instruction = opcode::get_instruction(self.memory.read(address));
-            if let Some(instruction) = instruction {
-                let (_, size) = self.get_parameters(&instruction.address_mode, address);
-                for i in 1..size {
-                    let next_address = address.wrapping_add(i);
-                    if self.assembly.contains_key(&next_address) {
-                        self.assembly.remove(&next_address);
-                    }
-                }
-            }
-            let disassembled_line = self.create_disassembled_line(address);
-            self.assembly.insert(address, disassembled_line);
+    pub fn get_instruction_text(
+        &mut self,
+        address_mode: &AddressMode,
+        address: Option<u16>,
+    ) -> (String, u8) {
+        let next: u8;
+        let next_word: u16;
+        let instruct: u8;
+        if let Some(addr) = address {
+            instruct = self.read(addr);
+            next = self.read(addr.wrapping_add(1));
+            next_word = self.read_word(addr.wrapping_add(1));
+        } else {
+            instruct = self.read_instruct();
+            next = self.read_next();
+            next_word = self.read_next_word();
         }
-    }
 
-    fn get_parameters(&mut self, addr_mode: &AddressMode, addr: u16) -> (String, u16) {
-        match addr_mode {
-            AddressMode::Immidiate => (format!("#${:02X}", self.read(addr + 1)), 2),
-            AddressMode::ZeroPage => (format!("${:02X}", self.read(addr + 1)), 2),
-            AddressMode::ZeroPageX => (format!("${:02X}, X", self.read(addr + 1)), 2),
-            AddressMode::ZeroPageY => (format!("${:02X}, Y", self.read(addr + 1)), 2),
-            AddressMode::Absolute => (format!("${:04X}", self.read_word(addr + 1)), 3),
-            AddressMode::AbsoluteX => (format!("${:04X}, X", self.read_word(addr + 1)), 3),
-            AddressMode::AbsoluteY => (format!("${:04X}, Y", self.read_word(addr + 1)), 3),
-            AddressMode::Indirect => (format!("(${:04X})", self.read_word(addr + 1)), 3),
-            AddressMode::IndirectX => (format!("(${:02X}, X)", self.read(addr + 1)), 2),
-            AddressMode::IndirectY => (format!("(${:02X}), Y", self.read(addr + 1)), 2),
-            AddressMode::Relative => (format!("${:02X}", self.read(addr + 1)), 2),
-            AddressMode::Implicit => (String::new(), 1),
-            AddressMode::Accumulator => (String::from("A"), 1),
-        }
-    }
-
-    pub fn set_assembly(&mut self, assembly: HashMap<u16, String>) {
-        self.assembly = assembly;
-    }
-
-    pub fn get_assembly(&self, address: u16) -> Option<String> {
-        self.assembly.get(&address).cloned()
-    }
-
-    pub fn insert_assembly(&mut self, address: u16) {
-        if self.assembly.contains_key(&address) {
-            self.assembly.remove(&address);
-        }
-        let disassembled_line = self.create_disassembled_line(address);
-        self.assembly.insert(address, disassembled_line);
-    }
-
-    pub fn assembly_contains_key(&self, address: u16) -> bool {
-        self.assembly.contains_key(&address)
+        let (instruct, instruct_len) = match address_mode {
+            AddressMode::Implicit => (format!("{0:x}", instruct), 1),
+            AddressMode::Immidiate => (format!("{0:x} #${1:02X}", instruct, next), 2),
+            AddressMode::Accumulator => (format!("{0:x}", instruct), 1),
+            AddressMode::ZeroPage => (format!("{0:x} ${1:02X}", instruct, next), 2),
+            AddressMode::ZeroPageX => (format!("{0:x} ${1:02X}", instruct, next), 2),
+            AddressMode::ZeroPageY => (format!("{0:x} ${1:02X}, Y", instruct, next), 2),
+            AddressMode::Absolute => (format!("{0:x} ${1:04X}", instruct, next_word), 3),
+            AddressMode::AbsoluteX => (format!("{0:x} ${1:04X}, X", instruct, next_word), 3),
+            AddressMode::AbsoluteY => (format!("{0:x} ${1:04X}, Y", instruct, next_word), 3),
+            AddressMode::Relative => (format!("{0:x} ${1:02X}", instruct, next), 2),
+            AddressMode::Indirect => (format!("{0:x} (${1:04X})", instruct, next_word), 3),
+            AddressMode::IndirectX => (format!("{0:x} (${1:02X}, X)", instruct, next), 2),
+            AddressMode::IndirectY => (format!("{0:x} (${1:02X}), Y", instruct, next), 2),
+        };
+        (instruct, instruct_len)
     }
 }
