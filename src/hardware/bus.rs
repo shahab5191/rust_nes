@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use super::cpu::opcode;
 use super::enums::Registers;
 use super::ppu::Ppu;
@@ -12,21 +15,22 @@ pub struct ReadAddressWithModeResult {
     pub cycles: u8,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Bus {
     pub cpu: CPU,
     pub memory: Memory,
     pub ppu: Ppu,
-    pub cartridge: Cartridge,
+    pub cartridge: Rc<RefCell<Cartridge>>,
 }
 
 impl Bus {
     pub fn new() -> Self {
+        let cartridge = Rc::new(RefCell::new(Cartridge::new()));
         let bus = Bus {
             cpu: CPU::new(),
             memory: Memory::new(),
-            ppu: Ppu::new(),
-            cartridge: Cartridge::new(),
+            ppu: Ppu::new(Rc::clone(&cartridge)),
+            cartridge: Rc::clone(&cartridge),
         };
         return bus;
     }
@@ -62,7 +66,7 @@ impl Bus {
             self.memory.read(address % 0x0800)
         } else if address < 0x4000 {
             self.ppu
-                .read_register(address, &self.cartridge)
+                .read_register(address)
                 .expect("Could not read PPU register")
         } else if address < 0x4018 {
             // APU and I/O registers - Implement later
@@ -72,7 +76,7 @@ impl Bus {
             0
         } else {
             // Cartridge memory
-            self.cartridge.mapper.cpu_read(address).expect(
+            self.cartridge.borrow().mapper.cpu_read(address).expect(
                 format!("Could not read from cartridge at address {:#04x}", address).as_str(),
             )
         }
@@ -113,14 +117,14 @@ impl Bus {
         if address < 0x2000 {
             self.memory.write(address % 0x0800, value);
         } else if address < 0x4000 {
-            self.ppu.write_register(address, value, &mut self.cartridge);
+            self.ppu.write_register(address, value);
         } else if address < 0x4018 {
             // APU and I/O registers - Implement later
         } else if address < 0x4020 {
             // Normally disabled
         } else {
             // Cartridge memory
-            self.cartridge.mapper.cpu_write(address, value);
+            self.cartridge.borrow_mut().mapper.cpu_write(address, value);
         }
     }
 
@@ -295,31 +299,32 @@ impl Bus {
     }
 
     pub fn ppu_write(&mut self, address: u16, value: u8) {
-        self.cartridge.mapper.ppu_write(address, value);
+        self.cartridge.borrow_mut().mapper.ppu_write(address, value);
     }
 
     pub fn ppu_read(&mut self, address: u16) -> Option<u8> {
         match address {
             0x0000..=0x1FFF => {
                 // CHR RAM or CHR ROM
-                self.cartridge.mapper.ppu_read(address)
+                self.cartridge.borrow().mapper.ppu_read(address)
             }
             _ => {
                 // Handle cartridge-specific PPU reads
-                self.cartridge.mapper.ppu_read(address)
+                self.cartridge.borrow().mapper.ppu_read(address)
             }
         }
     }
 
     pub fn cpu_read(&mut self, address: u16) -> u8 {
         self.cartridge
+            .borrow()
             .mapper
             .cpu_read(address)
             .expect(format!("Could not read cpu on {}", address).as_str())
     }
 
     fn cpu_write(&mut self, addr: u16, value: u8) {
-        self.cartridge.mapper.cpu_write(addr, value);
+        self.cartridge.borrow_mut().mapper.cpu_write(addr, value);
     }
 
     pub fn read_tile(&mut self, tile_index: u16) -> [u8; 16] {
@@ -361,7 +366,7 @@ impl Bus {
         self.cpu.reset();
         self.memory.reset();
         self.ppu.reset();
-        self.cartridge.reset();
+        self.cartridge.borrow_mut().reset();
         let reset_vector = self.read_word(0xFFFC);
         self.cpu.set_counter(reset_vector);
     }

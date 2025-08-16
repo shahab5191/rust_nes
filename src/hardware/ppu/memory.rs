@@ -1,23 +1,15 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Memory {
-    nametable: [u8; 4096],
     palette: [u8; 32],
+    frame_buffer: Vec<u8>,
 }
 
 impl Memory {
     pub fn new() -> Self {
         Memory {
-            nametable: [0; 4096],
             palette: [0; 32],
+            frame_buffer: vec![0; 256 * 240 * 4],
         }
-    }
-
-    pub fn read_nametable(&self, address: u16) -> Option<u8> {
-        self.nametable.get(address as usize).copied()
-    }
-
-    pub fn write_nametable(&mut self, address: u16, value: u8) {
-        self.nametable[address as usize] = value;
     }
 
     pub fn read_palette(&self, address: u16) -> Option<u8> {

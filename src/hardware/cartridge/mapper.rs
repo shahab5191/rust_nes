@@ -24,6 +24,7 @@ pub struct Mapper0 {
     prg_ram: Vec<u8>,
     pub chr: Vec<u8>,
     chr_is_ram: bool,
+    nametable: [u8; 4096],
 }
 
 impl Mapper0 {
@@ -35,6 +36,7 @@ impl Mapper0 {
             prg_ram,
             chr,
             chr_is_ram,
+            nametable: [0; 4096], // Initialize nametable to zero
         }
     }
 }
@@ -109,9 +111,16 @@ impl Mapper for Mapper0 {
 
     fn ppu_read(&self, addr: u16) -> Option<u8> {
         let index = (addr & 0x3FFF) as usize;
-        if index < self.chr.len() {
+        if index < 0x2000 {
             let data = self.chr[index];
             Some(data)
+        } else if index < 0x3000 {
+            // CHR-ROM is read-only, so we can return the data directly.
+            let data = self.nametable[index - 0x2000];
+            Some(data)
+        } else if index < 0x3F00 {
+            // This is typically not used in Mapper0, but we can return a default value.
+            Some(0) // Default palette value
         } else {
             eprintln!("PPU Read: CHR address 0x{:04X} out of bounds.", addr);
             None
@@ -121,18 +130,23 @@ impl Mapper for Mapper0 {
     fn ppu_write(&mut self, addr: u16, data: u8) -> bool {
         // PPU addresses 0x0000-0x1FFF map directly to CHR data on Mapper0.
         // Only allow writes if chr_is_ram is true.
-        if self.chr_is_ram {
-            let index = addr as usize;
-            if index < self.chr.len() {
+        let index = addr as usize;
+        if index <= 0x1FFF {
+            if self.chr_is_ram {
                 self.chr[index] = data;
                 true // Write successful
             } else {
-                eprintln!("PPU Write: CHR RAM address 0x{:04X} out of bounds.", addr);
-                false // Write failed
+                eprintln!("PPU Write: Attempted to write to CHR-ROM at 0x{:04X}", addr);
+                false // Write ignored
             }
+        } else if index < 0x3000 {
+            self.nametable[index - 0x2000] = data;
+            true // Write successful
+        } else if index < 0x3F00 {
+            true
         } else {
-            eprintln!("PPU Write: Attempted to write to CHR-ROM at 0x{:04X}", addr);
-            false // Write ignored
+            eprintln!("PPU Write: CHR RAM address 0x{:04X} out of bounds.", addr);
+            false // Write failed
         }
     }
 
@@ -142,6 +156,7 @@ impl Mapper for Mapper0 {
 
     fn reset(&mut self) {
         self.prg_ram.fill(0);
+        self.nametable.fill(0);
         if self.chr_is_ram {
             self.chr.fill(0);
         }

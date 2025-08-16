@@ -8,7 +8,7 @@ use Result;
 use cpu::opcode;
 use std::io;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Hardware {
     bus: bus::Bus,
 }
@@ -112,7 +112,7 @@ impl Hardware {
     }
 
     pub fn load_rom(&mut self, file_path: &str) -> Result<(), io::Error> {
-        self.bus.cartridge.load_ines_rom(file_path)?;
+        self.bus.cartridge.borrow_mut().load_ines_rom(file_path)?;
         self.bus.reset();
         Ok(())
     }

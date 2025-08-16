@@ -1,14 +1,10 @@
 mod memory;
+use std::{cell::RefCell, rc::Rc};
+
 use super::cartridge::Cartridge;
 use memory::Memory;
 
-impl Default for Ppu {
-    fn default() -> Self {
-        Ppu::new()
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Ppu {
     pub cycle: u16,
     pub scanline: u16,
@@ -29,10 +25,11 @@ pub struct Ppu {
     pub buffered_data: u8, // used for delayed PPU reads
 
     memory: Memory,
+    cartridge: Rc<RefCell<Cartridge>>,
 }
 
 impl Ppu {
-    pub fn new() -> Self {
+    pub fn new(cartridge: Rc<RefCell<Cartridge>>) -> Self {
         Ppu {
             cycle: 0,
             scanline: 0,
@@ -51,6 +48,7 @@ impl Ppu {
             fine_x: 0,
             buffered_data: 0,
             memory: Memory::new(),
+            cartridge,
         }
     }
 
@@ -73,10 +71,30 @@ impl Ppu {
                 // Visible scanline, reset PPU state
                 self.vram_addr = (self.vram_addr & 0x7FE0) | (self.temp_addr & 0x001F);
             }
-        } else if self.scanline >= 0 && self.scanline < 240 {
+        } else if self.scanline < 240 {
             // Visible scanlines
             if self.cycle >= 1 && self.cycle <= 256 {
                 // Render pixel logic
+                let nt_addr = (self.vram_addr >> 10) & 0x03;
+                let tile_id = self.read_vram(self.vram_addr).unwrap_or(0);
+                let attr_addr = 0x23C0
+                    | (self.vram_addr & 0x0C00)
+                    | ((self.vram_addr >> 4) & 0x38)
+                    | ((self.vram_addr >> 2) & 0x07);
+                let attr = self.read_vram(attr_addr).unwrap_or(0);
+                let mut pallette_index = attr;
+                if (self.vram_addr & 0x0040) != 0 {
+                    // bottem half
+                    pallette_index >>= 4;
+                }
+                if (self.vram_addr & 0x0002) != 0 {
+                    // Right half
+                    pallette_index >>= 2;
+                }
+
+                let pallette_selector = (pallette_index & 0x03) << 2;
+
+                // TODO: Fetch tile data and render pixel
             } else if self.cycle == 257 {
                 // Reset horizontal bits of vram_addr from temp_addr (for next scanline's start)
                 self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
@@ -105,17 +123,15 @@ impl Ppu {
         }
     }
 
-    fn read_vram(&mut self, addr: u16, cartridge: &Cartridge) -> Option<u8> {
+    fn read_vram(&mut self, addr: u16) -> Option<u8> {
         let mapped_addr = addr & 0x3FFF; // Mask to 14 bits
-        if mapped_addr < 0x2000 {
-            // Nametable or palette memory
-            self.memory.read_nametable(mapped_addr)
-        } else if mapped_addr < 0x3F00 {
+        if mapped_addr < 0x3F00 {
             // CHR ROM
-            cartridge.mapper.ppu_read(mapped_addr)
+            self.cartridge.borrow().mapper.ppu_read(mapped_addr)
         } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
             // Palette memory
-            self.memory.read_palette(mapped_addr)
+            let address = (mapped_addr - 0x3F00) % 0x20;
+            self.memory.read_palette(address)
         } else {
             // Invalid address
             eprintln!("PPU Read: Invalid address 0x{:04X}", addr);
@@ -123,24 +139,25 @@ impl Ppu {
         }
     }
 
-    fn write_vram(&mut self, addr: u16, value: u8, cartridge: &mut Cartridge) {
+    fn write_vram(&mut self, addr: u16, value: u8) {
         let mapped_addr = addr & 0x3FFF; // Mask to 14 bits
-        if mapped_addr < 0x2000 {
-            // Nametable or palette memory
-            self.memory.write_nametable(mapped_addr, value);
-        } else if mapped_addr < 0x3F00 {
+        if mapped_addr < 0x3F00 {
             // CHR ROM
-            cartridge.mapper.ppu_write(mapped_addr, value);
+            self.cartridge
+                .borrow_mut()
+                .mapper
+                .ppu_write(mapped_addr, value);
         } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
             // Palette memory
-            self.memory.write_palette(mapped_addr, value);
+            let address = (mapped_addr - 0x3F00) % 0x20;
+            self.memory.write_palette(address, value);
         } else {
             // Invalid address
             eprintln!("PPU Write: Invalid address 0x{:04X}", addr);
         }
     }
 
-    pub fn read_register(&mut self, addr: u16, cartridge: &Cartridge) -> Option<u8> {
+    pub fn read_register(&mut self, addr: u16) -> Option<u8> {
         match addr & 0x2007 {
             0x2002 => {
                 // PPUSTATUS
@@ -158,7 +175,7 @@ impl Ppu {
             }
             0x2007 => {
                 // PPUDATA
-                let value = self.read_vram(addr, cartridge);
+                let value = self.read_vram(addr);
                 let result: Option<u8>;
                 if addr & 0x3FFF >= 0x3F00 {
                     // Palette memory is imidiately read
@@ -177,7 +194,7 @@ impl Ppu {
         }
     }
 
-    pub fn write_register(&mut self, addr: u16, value: u8, cartridge: &mut Cartridge) {
+    pub fn write_register(&mut self, addr: u16, value: u8) {
         match addr & 0x2007 {
             0x2000 => {
                 // PPUCTRL
@@ -223,7 +240,7 @@ impl Ppu {
             0x2007 => {
                 // PPUDATA
                 let addr = self.vram_addr & 0x3FFF;
-                self.write_vram(addr, value, cartridge);
+                self.write_vram(addr, value);
                 self.vram_addr =
                     self.vram_addr
                         .wrapping_add(if self.control & 0x04 != 0 { 32 } else { 1 });
