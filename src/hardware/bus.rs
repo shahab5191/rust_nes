@@ -39,7 +39,7 @@ impl Bus {
     pub fn increment_pc(&mut self, address_mode: &AddressMode) {
         let pc = self.cpu.get_counter();
         let value = match address_mode {
-            AddressMode::Immidiate => 2,
+            AddressMode::Immediate => 2,
             AddressMode::IndirectX => 2,
             AddressMode::IndirectY => 2,
             AddressMode::Indirect => 3,
@@ -182,7 +182,7 @@ impl Bus {
                     cycles: 0,
                 };
             }
-            AddressMode::Immidiate => ReadAddressWithModeResult {
+            AddressMode::Immediate => ReadAddressWithModeResult {
                 value: self.read_next(),
                 address: 0,
                 cycles: 0,
@@ -203,6 +203,7 @@ impl Bus {
                 address: 0,
                 cycles: 0,
             },
+
             AddressMode::Indirect => {
                 let pointer: u16 = self.read_next_word();
                 ReadAddressWithModeResult {
@@ -211,6 +212,7 @@ impl Bus {
                     cycles: 0,
                 }
             }
+
             AddressMode::IndirectX => {
                 let operand = self.read_next();
                 let zero_page_pointer = operand.wrapping_add(self.cpu.get(Registers::X));
@@ -219,13 +221,14 @@ impl Bus {
                 // u16 then adds 1 to it, which is not what we want here.
                 let low_byte = self.read(zero_page_pointer as u16);
                 let high_byte = self.read(zero_page_pointer.wrapping_add(1) as u16);
-                let address: u16 = (high_byte as u16) << 8 + (low_byte as u16);
+                let address: u16 = ((high_byte as u16) << 8) + (low_byte as u16);
                 ReadAddressWithModeResult {
                     value: self.read(address),
                     address,
                     cycles: 0,
                 }
             }
+
             AddressMode::IndirectY => {
                 let operand = self.read_next() as u16;
                 let zero_page_pointer = self.read_word(operand);
@@ -241,14 +244,16 @@ impl Bus {
                     cycles,
                 }
             }
+
             AddressMode::Absolute => {
                 let address = self.read_next_word();
                 ReadAddressWithModeResult {
-                    value: self.memory.borrow().read(address),
+                    value: self.read(address),
                     address,
                     cycles: 0,
                 }
             }
+
             AddressMode::AbsoluteX => {
                 let operand = self.read_next_word();
                 let address = operand.wrapping_add(self.cpu.get(Registers::X) as u16);
@@ -263,6 +268,7 @@ impl Bus {
                     cycles,
                 }
             }
+
             AddressMode::AbsoluteY => {
                 let operand = self.read_next_word();
                 let address = operand.wrapping_add(self.cpu.get(Registers::Y) as u16);
@@ -277,6 +283,7 @@ impl Bus {
                     cycles,
                 }
             }
+
             AddressMode::ZeroPage => {
                 let address = self.read_next() as u16;
                 let value = self.read(address);
@@ -286,18 +293,20 @@ impl Bus {
                     cycles: 0,
                 }
             }
+
             AddressMode::ZeroPageX => {
-                let operand = self.read_next() as u16;
-                let address = operand.wrapping_add(self.cpu.get(Registers::X) as u16);
+                let operand = self.read_next();
+                let address = operand.wrapping_add(self.cpu.get(Registers::X)) as u16;
                 ReadAddressWithModeResult {
                     value: self.read(address),
                     address,
                     cycles: 0,
                 }
             }
+
             AddressMode::ZeroPageY => {
-                let operand = self.read_next() as u16;
-                let address = operand.wrapping_add(self.cpu.get(Registers::Y) as u16);
+                let operand = self.read_next();
+                let address = operand.wrapping_add(self.cpu.get(Registers::Y)) as u16;
                 ReadAddressWithModeResult {
                     value: self.read(address),
                     address,
@@ -422,7 +431,7 @@ impl Bus {
 
         let (instruct, instruct_len) = match address_mode {
             AddressMode::Implicit => (format!("{0:x}", instruct), 1),
-            AddressMode::Immidiate => (format!("{0:x} #${1:02X}", instruct, next), 2),
+            AddressMode::Immediate => (format!("{0:x} #${1:02X}", instruct, next), 2),
             AddressMode::Accumulator => (format!("{0:x}", instruct), 1),
             AddressMode::ZeroPage => (format!("{0:x} ${1:02X}", instruct, next), 2),
             AddressMode::ZeroPageX => (format!("{0:x} ${1:02X}", instruct, next), 2),

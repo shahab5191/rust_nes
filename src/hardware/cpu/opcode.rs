@@ -37,7 +37,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0x09 => Some(Instruction {
             name: "ORA",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::ora,
         }),
         0x0A => Some(Instruction {
@@ -127,7 +127,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0x29 => Some(Instruction {
             name: "AND",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::and,
         }),
         0x2A => Some(Instruction {
@@ -217,7 +217,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0x49 => Some(Instruction {
             name: "EOR",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::eor,
         }),
         0x4A => Some(Instruction {
@@ -307,7 +307,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0x69 => Some(Instruction {
             name: "ADC",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::adc,
         }),
         0x6A => Some(Instruction {
@@ -462,7 +462,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xA0 => Some(Instruction {
             name: "LDY",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::ldy,
         }),
         0xA1 => Some(Instruction {
@@ -472,7 +472,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xA2 => Some(Instruction {
             name: "LDX",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::ldx,
         }),
         0xA4 => Some(Instruction {
@@ -497,7 +497,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xA9 => Some(Instruction {
             name: "LDA",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::lda,
         }),
         0xAA => Some(Instruction {
@@ -577,7 +577,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xC0 => Some(Instruction {
             name: "CPY",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::cpy,
         }),
         0xC1 => Some(Instruction {
@@ -607,7 +607,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xC9 => Some(Instruction {
             name: "CMP",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::cmp,
         }),
         0xCA => Some(Instruction {
@@ -672,7 +672,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xE0 => Some(Instruction {
             name: "CPX",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::cpx,
         }),
         0xE1 => Some(Instruction {
@@ -702,7 +702,7 @@ pub fn get_instruction(opcode: u8) -> Option<Instruction> {
         }),
         0xE9 => Some(Instruction {
             name: "SBC",
-            address_mode: AddressMode::Immidiate,
+            address_mode: AddressMode::Immediate,
             execute: instructions::sbc,
         }),
         0xEA => Some(Instruction {

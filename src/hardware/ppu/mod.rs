@@ -35,23 +35,23 @@ impl Ppu {
             cycle: 0,
             scanline: 0,
             frame_complete: false,
-            control: 0,
-            mask: 0,
-            status: 0,
-            oam_addr: 0,
-            oam_data: [0; 256],
-            scroll_latch: false,
-            scroll_x: 0,
-            scroll_y: 0,
-            addr_latch: false,
-            vram_addr: 0,
-            temp_addr: 0,
-            fine_x: 0,
-            buffered_data: 0,
+            control: 0x00,       // PPUCTRL: All bits off
+            mask: 0x00,          // PPUMASK: Rendering off
+            status: 0x00,        // PPUSTATUS: No flags set (or 0x80 if starting in VBlank)
+            oam_addr: 0x00,      // OAMADDR: Start at 0
+            oam_data: [0; 256],  // OAM: Zero-filled (or random for accuracy)
+            scroll_latch: false, // PPUSCROLL first write
+            scroll_x: 0x00,
+            scroll_y: 0x00,
+            addr_latch: false,   // PPUADDR first write
+            vram_addr: 0x0000,   // Current VRAM address
+            temp_addr: 0x0000,   // Temp VRAM address
+            fine_x: 0x00,        // Fine X scroll
+            buffered_data: 0x00, // PPUDATA read buffer
             cartridge,
-            pallette: [0; 32],
-            frame_buffer: vec![0; 256 * 240 * 4],
-            nmi_pending: false,
+            pallette: [0; 32], // Palette RAM: Zero-filled (or random)
+            frame_buffer: vec![0; 256 * 240 * 4], // Black screen
+            nmi_pending: false, // No NMI pending
         }
     }
 
@@ -59,6 +59,22 @@ impl Ppu {
         self.cycle = 0;
         self.scanline = 0;
         self.frame_complete = false;
+        self.control = 0x00; // Clear PPUCTRL
+        self.mask = 0x00; // Clear PPUMASK
+        self.status = 0x00; // Clear PPUSTATUS
+        self.oam_addr = 0x00; // Reset OAM address
+        //self.oam_data unchanged    // OAM typically not cleared on reset
+        self.scroll_latch = false; // Reset scroll latch
+        self.scroll_x = 0x00;
+        self.scroll_y = 0x00;
+        self.addr_latch = false; // Reset address latch
+        self.vram_addr = 0x0000; // Clear VRAM address
+        self.temp_addr = 0x0000; // Clear temp address
+        self.fine_x = 0x00; // Clear fine X
+        self.buffered_data = 0x00; // Clear read buffer
+        //self.pallette unchanged    // Palette typically not cleared on reset
+        //self.frame_buffer unchanged // Frame buffer typically not cleared
+        self.nmi_pending = false; // Clear pending NMI
     }
 
     pub fn tick(&mut self) {
@@ -87,6 +103,33 @@ impl Ppu {
                 let pallette_selector = (pallette_index & 0x03) << 2;
 
                 // TODO: Fetch tile data and render pixel
+                //
+                if self.cycle % 8 == 0 && self.cycle <= 256 {
+                    // Increment coarse X (bits 0-4)
+                    if self.vram_addr & 0x001F == 0x001F {
+                        // Coarse X == 31
+                        self.vram_addr &= !0x001F; // Reset coarse X
+                        self.vram_addr ^= 0x0400; // Flip nametable X (bit 10)
+                    } else {
+                        self.vram_addr += 1; // Increment coarse X
+                    }
+                }
+                if (self.vram_addr & 0x7000) == 0x7000 {
+                    // Fine Y == 7
+                    self.vram_addr &= !0x7000; // Reset fine Y
+                    let mut coarse_y = (self.vram_addr & 0x03E0) >> 5;
+                    if coarse_y == 29 {
+                        coarse_y = 0;
+                        self.vram_addr ^= 0x0800; // Flip nametable Y (bit 11)
+                    } else if coarse_y == 31 {
+                        coarse_y = 0; // No flip if overflow beyond 29 (safety)
+                    } else {
+                        coarse_y += 1;
+                    }
+                    self.vram_addr = (self.vram_addr & !0x03E0) | (coarse_y << 5);
+                } else {
+                    self.vram_addr += 0x1000; // Increment fine Y (bit 12-14)
+                }
             } else if self.cycle == 257 {
                 // Reset horizontal bits of vram_addr from temp_addr (for next scanline's start)
                 self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
@@ -98,7 +141,7 @@ impl Ppu {
                 // Start of VBlank, set VBlank flag
                 self.status |= 0x80; // Set VBlank flag
                 self.frame_complete = true; // Indicate frame completion
-                if (self.control >> 6) & 0x01 != 0 {
+                if (self.control & 0x80) != 0 {
                     // If NMI is enabled, trigger NMI
                     self.nmi_pending = true;
                     println!("NMI triggered at scanline 241, cycle 1");
@@ -109,12 +152,11 @@ impl Ppu {
         } else if self.scanline == 261 {
             if self.cycle == 1 {
                 // End of VBlank, clear VBlank flag
-                self.status &= !0xC0; // Clear VBlank and sprite 0 hit flags
-                self.nmi_pending = false; // Disable NMI until next frame
+                self.status &= 0x1f; // Clear VBlank and sprite 0 hit flags
             } else if self.cycle >= 280 && self.cycle < 304 {
-                self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
+                self.vram_addr = (self.vram_addr & 0x041F) | (self.temp_addr & 0x7BE0);
             } else if self.cycle == 257 {
-                self.vram_addr = (self.vram_addr & 0x7FE0) | (self.temp_addr & 0x001F);
+                self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
             }
         }
         if self.cycle >= 341 {
@@ -172,7 +214,7 @@ impl Ppu {
         match addr & 0x2007 {
             0x2002 => {
                 // PPUSTATUS
-                let value = self.status.clone();
+                let value = self.status;
                 self.status &= !0x80;
                 self.addr_latch = false;
                 self.scroll_latch = false;
@@ -186,16 +228,16 @@ impl Ppu {
             }
             0x2007 => {
                 // PPUDATA
-                let value = self.read_vram(addr);
-                let result: Option<u8>;
-                if addr & 0x3FFF >= 0x3F00 {
+                let value = self.read_vram(self.vram_addr);
+                let result = if self.vram_addr & 0x3FFF >= 0x3F00 {
                     // Palette memory is imidiately read
-                    result = value;
+                    value
                 } else {
                     // Regular VRAM read is delayed
-                    result = Some(self.buffered_data);
-                }
-                self.buffered_data = value.unwrap_or(0);
+                    let buffered_value = self.buffered_data;
+                    self.buffered_data = value.unwrap_or(0);
+                    Some(buffered_value)
+                };
                 self.vram_addr =
                     self.vram_addr
                         .wrapping_add(if self.control & 0x04 != 0 { 32 } else { 1 });
@@ -209,8 +251,16 @@ impl Ppu {
         match addr & 0x2007 {
             0x2000 => {
                 // PPUCTRL
+                println!("PPUCTRL write: {:#04X}", value);
+                let nmi_was_enabled = (self.control & 0x80) != 0;
                 self.control = value;
                 self.temp_addr = (self.temp_addr & 0xF3FF) | (((value as u16) & 0x03) << 10);
+
+                let nmi_is_enabled = (self.control & 0x80) != 0;
+                if !nmi_was_enabled && nmi_is_enabled && (self.status & 0x80) != 0 {
+                    self.nmi_pending = true;
+                    println!("NMI triggered immediately on $2000 write");
+                }
             }
             0x2001 => {
                 // PPUMASK

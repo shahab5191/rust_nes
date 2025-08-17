@@ -7,7 +7,7 @@ use super::Registers;
 #[derive(PartialEq, Eq)]
 pub enum AddressMode {
     Implicit,
-    Immidiate,
+    Immediate,
     Accumulator,
     ZeroPage,
     ZeroPageX,
@@ -26,7 +26,7 @@ impl Display for AddressMode {
         match self {
             AddressMode::Relative => write!(f, "R"),
             AddressMode::Implicit => write!(f, "I"),
-            AddressMode::Immidiate => write!(f, "Imm"),
+            AddressMode::Immediate => write!(f, "Imm"),
             AddressMode::Accumulator => write!(f, "A"),
             AddressMode::ZeroPage => write!(f, "ZP"),
             AddressMode::ZeroPageX => write!(f, "ZPX"),
@@ -58,7 +58,6 @@ fn log_instruct(instruct_name: &str, address_mode: &AddressMode, bus: Option<&mu
     //     }
     // }
 }
-
 pub fn adc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Add with carry
     log_instruct("ADC", &address_mode, Some(bus));
@@ -74,7 +73,7 @@ pub fn adc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::A, result as u8);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -97,7 +96,7 @@ pub fn and(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::A, result);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -352,7 +351,7 @@ pub fn cmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set_negative(res < 0);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -380,7 +379,7 @@ pub fn cpx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set_negative(res < 0);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::Absolute => 4,
         _ => 0,
@@ -403,7 +402,7 @@ pub fn cpy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set_negative(res < 0);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::Absolute => 4,
         _ => 0,
@@ -476,7 +475,7 @@ pub fn eor(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.a = res;
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -568,7 +567,7 @@ pub fn lda(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::A, val.value);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -590,7 +589,7 @@ pub fn ldx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::X, val.value);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageY => 4,
         AddressMode::Absolute => 4,
@@ -609,7 +608,7 @@ pub fn ldy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::Y, val.value);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -662,7 +661,7 @@ pub fn ora(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::A, res);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,
@@ -799,7 +798,7 @@ pub fn sbc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set(Registers::A, result as u8);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
-        AddressMode::Immidiate => 2,
+        AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
         AddressMode::ZeroPageX => 4,
         AddressMode::Absolute => 4,

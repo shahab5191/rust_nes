@@ -53,9 +53,9 @@ impl Hardware {
                     }
                 };
 
-                let (instruct, _) = self
-                    .bus
-                    .create_disassembled_line(self.bus.cpu.get_counter());
+                // let (instruct, _) = self
+                //     .bus
+                //     .create_disassembled_line(self.bus.cpu.get_counter());
                 // println!("[0x{:04X}] {}", self.bus.cpu.get_counter(), instruct);
 
                 (instruction.execute)(&mut self.bus, instruction.address_mode)
