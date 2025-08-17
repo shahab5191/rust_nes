@@ -18,7 +18,7 @@ pub struct ReadAddressWithModeResult {
 #[derive(Debug, Clone)]
 pub struct Bus {
     pub cpu: CPU,
-    pub memory: Memory,
+    pub memory: Rc<RefCell<Memory>>,
     pub ppu: Ppu,
     pub cartridge: Rc<RefCell<Cartridge>>,
 }
@@ -26,9 +26,10 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Self {
         let cartridge = Rc::new(RefCell::new(Cartridge::new()));
+        let memory = Rc::new(RefCell::new(Memory::new()));
         let bus = Bus {
-            cpu: CPU::new(),
-            memory: Memory::new(),
+            cpu: CPU::new(memory.clone()),
+            memory: memory.clone(),
             ppu: Ppu::new(Rc::clone(&cartridge)),
             cartridge: Rc::clone(&cartridge),
         };
@@ -63,7 +64,7 @@ impl Bus {
 
     pub fn read(&mut self, address: u16) -> u8 {
         if address < 0x2000 {
-            self.memory.read(address % 0x0800)
+            self.memory.borrow().read(address % 0x0800)
         } else if address < 0x4000 {
             self.ppu
                 .read_register(address)
@@ -80,6 +81,14 @@ impl Bus {
                 format!("Could not read from cartridge at address {:#04x}", address).as_str(),
             )
         }
+    }
+
+    pub fn read_cartridge(&self, address: u16) -> u8 {
+        self.cartridge
+            .borrow()
+            .mapper
+            .cpu_read(address)
+            .unwrap_or(0)
     }
 
     pub fn read_instruct(&mut self) -> u8 {
@@ -115,7 +124,7 @@ impl Bus {
 
     pub fn write(&mut self, address: u16, value: u8) {
         if address < 0x2000 {
-            self.memory.write(address % 0x0800, value);
+            self.memory.borrow_mut().write(address % 0x0800, value);
         } else if address < 0x4000 {
             self.ppu.write_register(address, value);
         } else if address < 0x4018 {
@@ -150,7 +159,7 @@ impl Bus {
     pub fn stack_pull_word(&mut self) -> u16 {
         let low_byte = self.stack_pull();
         let high_byte = self.stack_pull();
-        (high_byte as u16) << 8 + (low_byte as u16)
+        ((high_byte as u16) << 8) + (low_byte as u16)
     }
 
     pub fn read_address_with_mode(
@@ -235,7 +244,7 @@ impl Bus {
             AddressMode::Absolute => {
                 let address = self.read_next_word();
                 ReadAddressWithModeResult {
-                    value: self.memory.read(address),
+                    value: self.memory.borrow().read(address),
                     address,
                     cycles: 0,
                 }
@@ -263,7 +272,7 @@ impl Bus {
                     cycles = 1;
                 }
                 ReadAddressWithModeResult {
-                    value: self.memory.read(address),
+                    value: self.memory.borrow().read(address),
                     address,
                     cycles,
                 }
@@ -364,15 +373,15 @@ impl Bus {
 
     pub fn reset(&mut self) {
         self.cpu.reset();
-        self.memory.reset();
+        self.memory.borrow_mut().reset();
         self.ppu.reset();
         self.cartridge.borrow_mut().reset();
         let reset_vector = self.read_word(0xFFFC);
         self.cpu.set_counter(reset_vector);
     }
 
-    pub fn create_disassembled_line(&mut self, address: u16) -> (String, u8) {
-        let opcode = self.read(address);
+    pub fn create_disassembled_line(&self, address: u16) -> (String, u8) {
+        let opcode = self.read_cartridge(address);
         let instruction = opcode::get_instruction(opcode);
         let disassembled;
         let instruction_len: u8;
@@ -392,7 +401,7 @@ impl Bus {
     }
 
     pub fn get_instruction_text(
-        &mut self,
+        &self,
         address_mode: &AddressMode,
         address: Option<u16>,
     ) -> (String, u8) {
@@ -400,13 +409,15 @@ impl Bus {
         let next_word: u16;
         let instruct: u8;
         if let Some(addr) = address {
-            instruct = self.read(addr);
-            next = self.read(addr.wrapping_add(1));
-            next_word = self.read_word(addr.wrapping_add(1));
+            instruct = self.read_cartridge(addr);
+            next = self.read_cartridge(addr.wrapping_add(1));
+            next_word = (self.read_cartridge(addr.wrapping_add(1)) as u16) << 8
+                | self.read_cartridge(addr.wrapping_add(2)) as u16;
         } else {
-            instruct = self.read_instruct();
-            next = self.read_next();
-            next_word = self.read_next_word();
+            instruct = self.read_cartridge(self.cpu.get_counter());
+            next = self.read_cartridge(self.cpu.get_counter().wrapping_add(1));
+            next_word = (self.read_cartridge(self.cpu.get_counter().wrapping_add(1)) as u16) << 8
+                | self.read_cartridge(self.cpu.get_counter().wrapping_add(2)) as u16;
         }
 
         let (instruct, instruct_len) = match address_mode {

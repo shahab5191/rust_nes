@@ -1,9 +1,11 @@
-use super::enums::Registers;
+use std::{cell::RefCell, rc::Rc};
+
+use super::{bus::Bus, enums::Registers, memory::Memory};
 
 pub mod instructions;
 pub mod opcode;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone)]
 pub struct CPU {
     a: u8,
     x: u8,
@@ -12,10 +14,11 @@ pub struct CPU {
     p: u8,
     pc: u16,
     pub delayed_interrupt: Option<bool>,
+    memory: Rc<RefCell<Memory>>,
 }
 
 impl CPU {
-    pub fn new() -> Self {
+    pub fn new(memory: Rc<RefCell<Memory>>) -> Self {
         CPU {
             a: 1,
             x: 0,
@@ -24,10 +27,9 @@ impl CPU {
             p: 0b1000,
             pc: 0xFFFC,
             delayed_interrupt: None,
+            memory: memory,
         }
     }
-
-    pub fn interpret(&mut self, program: Vec<u8>) {}
 
     fn set_status(&mut self, bit: u8, state: bool) {
         self.p &= !(1 << bit); // Clear the bit
@@ -144,5 +146,48 @@ impl CPU {
         self.p = 0b00000100; // Set unused bit, clear others
         self.delayed_interrupt = None;
         println!("CPU reset.");
+    }
+
+    pub fn stack_push(&mut self, value: u8) {
+        let new_sp = self.get(Registers::S).wrapping_sub(1);
+        self.set(Registers::S, new_sp);
+        self.memory.borrow_mut().write(0x100 + new_sp as u16, value);
+    }
+
+    pub fn stack_pull(&mut self) -> u8 {
+        let sp = self.get(Registers::S);
+        self.set(Registers::S, sp + 1);
+        self.memory.borrow().read(0x100 + sp as u16)
+    }
+
+    pub fn stack_push_word(&mut self, value: u16) {
+        let low_byte = (value & 0x00FF) as u8;
+        let high_byte = ((value & 0xFF00) >> 8) as u8;
+        self.stack_push(low_byte);
+        self.stack_push(high_byte);
+    }
+
+    pub fn stack_pull_word(&mut self) -> u16 {
+        let high_byte = self.stack_pull();
+        let low_byte = self.stack_pull();
+        ((high_byte as u16) << 8) + (low_byte as u16)
+    }
+
+    pub fn nmi(&mut self, nmi_vector: u16) -> u8 {
+        // TODO: Fix NMI handling
+        // this is not working correctly
+        println!("NMI triggered at PC: {:#04X}", self.pc);
+        self.stack_push_word(self.pc);
+
+        let mut p = self.p;
+        p &= !0x10;
+        p |= 0x20;
+        self.stack_push(p);
+
+        self.set_interrupt_disable(true);
+        println!("Reading NMI vector at 0xFFFA");
+        println!("NMI vector: {:#04X}", nmi_vector);
+        self.pc = nmi_vector;
+        return 7;
     }
 }

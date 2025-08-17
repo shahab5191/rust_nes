@@ -16,7 +16,6 @@ pub struct CpuState {
     pc: u16,
 }
 
-#[derive(Debug, Clone)]
 pub struct Nes {
     cpu_state: CpuState,
     fps: u32,
@@ -31,8 +30,9 @@ pub struct Nes {
 pub enum NesMessage {
     Tick,
     LoadRom(String),
-    ChangeCpuState(CpuState),
 }
+
+const FPS: u64 = 60;
 
 impl Application for Nes {
     type Executor = executor::Default;
@@ -42,18 +42,16 @@ impl Application for Nes {
 
     fn new(_flags: ()) -> (Self, Command<NesMessage>) {
         // Initialize the application with a default state.
-        (
-            Nes {
-                cpu_state: CpuState::default(),
-                fps: 60,
-                last_tick: None,
-                running: false,
-                emulator: Hardware::new(),
-                chr_1_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
-                chr_2_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
-            },
-            Command::none(),
-        )
+        let nes = Nes {
+            cpu_state: CpuState::default(),
+            fps: 60,
+            last_tick: None,
+            running: false,
+            emulator: Hardware::new(),
+            chr_1_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
+            chr_2_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
+        };
+        (nes, Command::none())
     }
 
     fn title(&self) -> String {
@@ -72,10 +70,6 @@ impl Application for Nes {
                 self.chr_2_buffer =
                     image::Handle::from_pixels(128, 128, self.emulator.get_chr_image(1).to_vec());
                 self.running = true;
-            }
-            NesMessage::ChangeCpuState(new_state) => {
-                self.cpu_state = new_state;
-                println!("CPU state updated: {:?}", self.cpu_state);
             }
             NesMessage::Tick => {
                 // This is where you would call your emulator's `tick` function.
@@ -115,7 +109,7 @@ impl Application for Nes {
             self.cpu_state.pc
         ));
 
-        let fps_text = text(format!("FPS: {}", self.fps));
+        let fps_text = text(format!("FPS: {}, ", self.fps));
 
         let load_button = Button::new(text("Load ROM"))
             .on_press(NesMessage::LoadRom(String::from("roms/super-mario.nes")));
@@ -127,13 +121,16 @@ impl Application for Nes {
             .width(512)
             .height(512);
 
-        let col1 = row![fps_text, cpu_state_text, load_button];
-        let col2 = row![chr_1_image, chr_2_image];
-        column![col1, col2].into()
+        let memory_dump_text = text(self.emulator.get_memory_dump(0x8000, 0x8800));
+
+        let row1 = row![fps_text, cpu_state_text, load_button];
+        let row2 = row![chr_1_image, chr_2_image];
+        let row3 = row![text("Memory Dump:"), memory_dump_text];
+        column![row1, row2, row3].into()
     }
 
     fn subscription(&self) -> Subscription<NesMessage> {
         // This is a common interval for NES emulation (60Hz refresh rate).
-        time::every(Duration::from_millis(1000 / 60)).map(|_| NesMessage::Tick)
+        time::every(Duration::from_millis(1000 / FPS)).map(|_| NesMessage::Tick)
     }
 }

@@ -5,78 +5,102 @@ pub mod enums;
 mod memory;
 mod ppu;
 use Result;
-use cpu::opcode;
+use cpu::opcode::{self};
 use std::io;
 
-#[derive(Debug, Clone)]
 pub struct Hardware {
     bus: bus::Bus,
+    cpu_cycles: u32,
 }
 
 impl Hardware {
     pub fn new() -> Self {
         Self {
             bus: bus::Bus::new(),
+            cpu_cycles: 0,
         }
     }
 
     pub fn tick(&mut self) -> Result<(), io::Error> {
-        for _ in 0..29_780 {
-            // Handle delayed interrupt once per tick
-            if matches!(self.bus.cpu.delayed_interrupt, Some(true)) {
-                // TODO: Properly handle the delayed interrupt
-                self.bus.cpu.delayed_interrupt = None;
-            }
-
-            // Fetch and decode instruction
-            let opcode = self.bus.read_instruct();
-            // get time spent on this part
-            let instruction = match opcode::get_instruction(opcode) {
-                Some(instr) => instr,
-                None => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("Invalid opcode: 0x{:02X}", opcode),
-                    ));
-                }
-            };
-
+        loop {
             // Execute instruction and determine cycles
-            let cycles = (instruction.execute)(&mut self.bus, instruction.address_mode);
+            let delayed_interrupt = match self.bus.cpu.delayed_interrupt {
+                Some(true) => {
+                    self.bus.cpu.delayed_interrupt = None;
+                    true
+                }
+                _ => false,
+            };
+            let cycles = if self.bus.ppu.get_nmi_pending() && !delayed_interrupt {
+                self.bus.ppu.set_nmi_pending(false);
+                let nmi_vector = self.bus.read_word(0xFFFA) as u16;
+                self.bus.cpu.nmi(nmi_vector)
+            } else {
+                // Fetch and decode instruction
+                let opcode = self.bus.read_instruct();
+                // get time spent on this part
+                let instruction = match opcode::get_instruction(opcode) {
+                    Some(instr) => instr,
+                    None => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "Invalid opcode [0x{:04X}]: 0x{:02X}",
+                                self.bus.cpu.get_counter(),
+                                opcode
+                            ),
+                        ));
+                    }
+                };
+
+                let (instruct, _) = self
+                    .bus
+                    .create_disassembled_line(self.bus.cpu.get_counter());
+                // println!("[0x{:04X}] {}", self.bus.cpu.get_counter(), instruct);
+
+                (instruction.execute)(&mut self.bus, instruction.address_mode)
+            };
+            self.bus.cpu.delayed_interrupt = None;
+            self.cpu_cycles += cycles as u32;
+
             let cycle_count = cycles * 3;
 
             // Run PPU ticks
             for _ in 0..cycle_count {
                 self.bus.ppu.tick();
-                if self.bus.ppu.frame_complete {
-                    self.bus.ppu.frame_complete = false;
-                    break;
-                }
+            }
+
+            if self.cpu_cycles >= 29780 {
+                // Reset CPU cycles after a frame
+                self.cpu_cycles = 0;
+                self.bus.ppu.frame_complete = false;
+                return Ok(());
             }
         }
-
-        Ok(())
     }
 
     pub fn get_memory_dump(&self, start: usize, size: usize) -> String {
-        let mem = &self.bus.memory.get_memory_slice();
-        let end = (start + size).min(mem.len());
-        let slice = &mem[start..end];
-
         let mut dumped_mem_str = String::new();
-        for (i, byte) in slice.iter().enumerate() {
+        for i in start..size {
+            let byte = self
+                .bus
+                .cartridge
+                .borrow()
+                .mapper
+                .cpu_read(i as u16)
+                .unwrap_or(0);
             if i % 32 == 0 {
                 if i != 0 {
                     dumped_mem_str.push('\n');
                 }
-                dumped_mem_str.push_str(&format!("{:04X}: ", start + i));
+                dumped_mem_str.push_str(&format!("{:04X}: ", i));
             }
             dumped_mem_str.push_str(&format!("{:02X} ", byte));
         }
         dumped_mem_str
     }
 
-    pub fn get_assembly(&mut self, count: u16) -> (Vec<String>, u16) {
+    pub fn get_assembly(&self, count: u16) -> (Vec<String>, u16) {
         let pc: u16 = self.bus.cpu.get_counter();
         let mut asm: Vec<String> = Vec::new();
         let mut line: u16 = pc;
@@ -84,7 +108,7 @@ impl Hardware {
         while asm.len() < count as usize {
             let (instruct, size) = self.bus.create_disassembled_line(line);
             asm.push(instruct);
-            line += size as u16;
+            line = line.wrapping_add(size as u16);
         }
         (asm, current_line)
     }

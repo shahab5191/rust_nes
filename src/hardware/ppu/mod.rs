@@ -2,7 +2,6 @@ mod memory;
 use std::{cell::RefCell, rc::Rc};
 
 use super::cartridge::Cartridge;
-use memory::Memory;
 
 #[derive(Debug, Clone)]
 pub struct Ppu {
@@ -24,8 +23,10 @@ pub struct Ppu {
     pub fine_x: u8,
     pub buffered_data: u8, // used for delayed PPU reads
 
-    memory: Memory,
+    pallette: [u8; 32],
+    frame_buffer: Vec<u8>,
     cartridge: Rc<RefCell<Cartridge>>,
+    nmi_pending: bool,
 }
 
 impl Ppu {
@@ -47,8 +48,10 @@ impl Ppu {
             temp_addr: 0,
             fine_x: 0,
             buffered_data: 0,
-            memory: Memory::new(),
             cartridge,
+            pallette: [0; 32],
+            frame_buffer: vec![0; 256 * 240 * 4],
+            nmi_pending: false,
         }
     }
 
@@ -60,18 +63,7 @@ impl Ppu {
 
     pub fn tick(&mut self) {
         self.cycle += 1;
-        if self.scanline == 261 {
-            if self.cycle == 1 {
-                // End of VBlank, clear VBlank flag
-                self.status &= !0xC0; // Clear VBlank and sprite 0 hit flags
-            } else if self.cycle >= 280 && self.cycle < 304 {
-                // Pre-render scanline, reset PPU state
-                self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
-            } else if self.cycle >= 1 && self.cycle < 256 {
-                // Visible scanline, reset PPU state
-                self.vram_addr = (self.vram_addr & 0x7FE0) | (self.temp_addr & 0x001F);
-            }
-        } else if self.scanline < 240 {
+        if self.scanline < 240 {
             // Visible scanlines
             if self.cycle >= 1 && self.cycle <= 256 {
                 // Render pixel logic
@@ -101,17 +93,28 @@ impl Ppu {
             } else if self.cycle == 328 {
             }
         } else if self.scanline == 240 {
-        } else if self.scanline >= 241 && self.scanline < 261 {
-            // Post-render scanlines
-            if self.scanline == 241 && self.cycle == 1 {
+        } else if self.scanline == 241 {
+            if self.cycle == 1 {
                 // Start of VBlank, set VBlank flag
                 self.status |= 0x80; // Set VBlank flag
                 self.frame_complete = true; // Indicate frame completion
-                if (self.control >> 7) & 0x01 != 0 {
+                if (self.control >> 6) & 0x01 != 0 {
                     // If NMI is enabled, trigger NMI
-                    // This would typically be handled by the CPU
-                    eprintln!("NMI Triggered");
+                    self.nmi_pending = true;
+                    println!("NMI triggered at scanline 241, cycle 1");
                 }
+            }
+        } else if self.scanline > 241 && self.scanline < 261 {
+            // Post-render scanlines
+        } else if self.scanline == 261 {
+            if self.cycle == 1 {
+                // End of VBlank, clear VBlank flag
+                self.status &= !0xC0; // Clear VBlank and sprite 0 hit flags
+                self.nmi_pending = false; // Disable NMI until next frame
+            } else if self.cycle >= 280 && self.cycle < 304 {
+                self.vram_addr = (self.vram_addr & 0x7BE0) | (self.temp_addr & 0x041F);
+            } else if self.cycle == 257 {
+                self.vram_addr = (self.vram_addr & 0x7FE0) | (self.temp_addr & 0x001F);
             }
         }
         if self.cycle >= 341 {
@@ -123,6 +126,14 @@ impl Ppu {
         }
     }
 
+    pub fn get_nmi_pending(&self) -> bool {
+        self.nmi_pending
+    }
+
+    pub fn set_nmi_pending(&mut self, status: bool) {
+        self.nmi_pending = status;
+    }
+
     fn read_vram(&mut self, addr: u16) -> Option<u8> {
         let mapped_addr = addr & 0x3FFF; // Mask to 14 bits
         if mapped_addr < 0x3F00 {
@@ -131,7 +142,7 @@ impl Ppu {
         } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
             // Palette memory
             let address = (mapped_addr - 0x3F00) % 0x20;
-            self.memory.read_palette(address)
+            self.pallette.get(address as usize).copied()
         } else {
             // Invalid address
             eprintln!("PPU Read: Invalid address 0x{:04X}", addr);
@@ -150,7 +161,7 @@ impl Ppu {
         } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
             // Palette memory
             let address = (mapped_addr - 0x3F00) % 0x20;
-            self.memory.write_palette(address, value);
+            self.pallette[address as usize] = value;
         } else {
             // Invalid address
             eprintln!("PPU Write: Invalid address 0x{:04X}", addr);

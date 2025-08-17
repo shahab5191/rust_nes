@@ -73,10 +73,6 @@ impl Mapper for Mapper0 {
                 if mapped_addr < prg_rom_len {
                     Some(self.prg_rom[mapped_addr])
                 } else {
-                    eprintln!(
-                        "CPU Read: PRG ROM address 0x{:04X} out of bounds (mapped to {}).",
-                        addr, mapped_addr
-                    );
                     None
                 }
             }
