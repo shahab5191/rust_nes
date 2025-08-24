@@ -138,15 +138,15 @@ impl Bus {
     }
 
     pub fn stack_push(&mut self, value: u8) {
-        let new_sp = self.cpu.get(Registers::S).wrapping_sub(1);
-        self.cpu.set(Registers::S, new_sp);
-        self.write(0x100 + new_sp as u16, value);
+        let sp = self.cpu.get(Registers::S);
+        self.write(0x100 + sp as u16, value);
+        self.cpu.set(Registers::S, sp.wrapping_sub(1));
     }
 
     pub fn stack_pull(&mut self) -> u8 {
-        let sp = self.cpu.get(Registers::S);
-        self.cpu.set(Registers::S, sp + 1);
-        self.read(0x100 + sp as u16)
+        let new_sp = self.cpu.get(Registers::S).wrapping_add(1);
+        self.cpu.set(Registers::S, new_sp);
+        self.read(0x100 + new_sp as u16)
     }
 
     pub fn stack_push_word(&mut self, value: u16) {
@@ -177,7 +177,7 @@ impl Bus {
         match address_mode {
             AddressMode::Implicit => {
                 return ReadAddressWithModeResult {
-                    value: self.cpu.get(Registers::A),
+                    value: 0,
                     address: 0,
                     cycles: 0,
                 };
@@ -206,9 +206,10 @@ impl Bus {
 
             AddressMode::Indirect => {
                 let pointer: u16 = self.read_next_word();
+                let address = self.read_word_buggy(pointer);
                 ReadAddressWithModeResult {
-                    value: 0,
-                    address: self.read_word_buggy(pointer),
+                    value: self.read(address),
+                    address,
                     cycles: 0,
                 }
             }

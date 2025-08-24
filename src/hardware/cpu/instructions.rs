@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::hardware::bus::Bus;
+use crate::hardware::bus::{Bus, ReadAddressWithModeResult};
 
 use super::Registers;
 
@@ -58,6 +58,7 @@ fn log_instruct(instruct_name: &str, address_mode: &AddressMode, bus: Option<&mu
     //     }
     // }
 }
+
 pub fn adc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Add with carry
     log_instruct("ADC", &address_mode, Some(bus));
@@ -117,7 +118,11 @@ pub fn asl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     bus.cpu.set_carry(val.value & 0x80 != 0);
     bus.cpu.set_zero(result == 0);
     bus.cpu.set_negative(result & 0x80 != 0);
-    bus.cpu.set(Registers::A, result);
+    if address_mode == AddressMode::Accumulator {
+        bus.cpu.set(Registers::A, result);
+    } else {
+        bus.write(val.address, result);
+    }
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::Accumulator => 2,
@@ -126,7 +131,7 @@ pub fn asl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         AddressMode::Absolute => 6,
         AddressMode::AbsoluteX => 7,
         _ => 0,
-    } + val.cycles;
+    };
     cycles
 }
 
@@ -176,9 +181,8 @@ pub fn beq(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-    } else {
-        bus.increment_pc(&address_mode);
     }
+    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -211,9 +215,8 @@ pub fn bmi(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-    } else {
-        bus.increment_pc(&address_mode);
     }
+    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -229,9 +232,8 @@ pub fn bne(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-    } else {
-        bus.increment_pc(&address_mode);
     }
+    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -247,10 +249,8 @@ pub fn bpl(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-        bus.increment_pc(&address_mode);
-    } else {
-        bus.increment_pc(&address_mode);
     }
+    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -258,14 +258,14 @@ pub fn brk(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Force intrupt
     log_instruct("BRK", &address_mode, Some(bus));
     bus.stack_push_word(bus.cpu.get_counter() + 2);
-    bus.stack_push(bus.cpu.get(Registers::P));
+    let p_register = bus.cpu.get(Registers::P) | !0b00110000; // Set break flag
+    bus.stack_push(p_register);
     bus.cpu.set_break(true);
     let low_byte = bus.read(0xFFFE) as u16;
     let high_byte = bus.read(0xFFFF) as u16;
     bus.cpu.set_counter((high_byte << 8) + low_byte);
     bus.cpu.set_interrupt_disable(true);
-    bus.increment_pc_by(2);
-    return 2;
+    return 7;
 }
 
 pub fn bvc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
@@ -280,9 +280,9 @@ pub fn bvc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-    } else {
-        bus.increment_pc(&address_mode);
     }
+    bus.increment_pc(&address_mode);
+
     cycles + 2
 }
 
@@ -298,9 +298,8 @@ pub fn bvs(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         if pc & 0xFF00 != val.address & 0xFF00 {
             cycles += 1;
         }
-    } else {
-        bus.increment_pc(&address_mode);
     }
+    bus.increment_pc(&address_mode);
     cycles + 2
 }
 
@@ -324,7 +323,7 @@ pub fn cli(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Set Interrupt Disable
     log_instruct("CLI", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
-    bus.cpu.set_overflow(false);
+    bus.cpu.set_interrupt_disable(false);
     2 // CLI takes 2 cycles
 }
 
@@ -332,7 +331,7 @@ pub fn clv(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Clear Overflow FLag
     log_instruct("CLV", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
-    bus.cpu.set_overflow(true);
+    bus.cpu.set_overflow(false);
     2 // CLV takes 2 cycles
 }
 
@@ -341,15 +340,12 @@ pub fn cmp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("CMP", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let acc = bus.cpu.a;
-    let res = acc as i8 - val.value as i8;
-    if res >= 0 {
-        bus.cpu.set_carry(true);
-        if res == 0 {
-            bus.cpu.set_zero(true);
-        }
-    }
-    bus.cpu.set_negative(res < 0);
+    let res = acc.wrapping_sub(val.value);
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_negative((res & 0x80) != 0);
+    bus.cpu.set_carry(acc >= val.value);
     bus.increment_pc(&address_mode);
+
     let cycles: u8 = match address_mode {
         AddressMode::Immediate => 2,
         AddressMode::ZeroPage => 3,
@@ -407,16 +403,11 @@ pub fn cpy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 pub fn dec(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Decrement Memory
     log_instruct("DEC", &address_mode, Some(bus));
-    let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = val.value.wrapping_sub(1);
     bus.cpu.set_negative(res & 0x80 != 0);
     bus.cpu.set_zero(res == 0);
-    if is_accumulator {
-        bus.cpu.a = res;
-    } else {
-        bus.write(val.address, res as u8);
-    }
+    bus.write(val.address, res as u8);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::ZeroPage => 5,
@@ -424,7 +415,7 @@ pub fn dec(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         AddressMode::Absolute => 6,
         AddressMode::AbsoluteX => 7,
         _ => 0,
-    } + val.cycles;
+    };
     cycles
 }
 
@@ -485,16 +476,11 @@ pub fn eor(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 pub fn inc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Increment Memory
     log_instruct("INC", &address_mode, Some(bus));
-    let is_accumulator = address_mode == AddressMode::Accumulator;
     let val = bus.read_address_with_mode(&address_mode);
     let res = val.value.wrapping_add(1);
     bus.cpu.set_zero(res == 0);
     bus.cpu.set_negative(res & 0x80 != 0);
-    if is_accumulator {
-        bus.cpu.a = res;
-    } else {
-        bus.write(val.address, res);
-    }
+    bus.write(val.address, res);
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::ZeroPage => 5,
@@ -502,7 +488,7 @@ pub fn inc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         AddressMode::Absolute => 6,
         AddressMode::AbsoluteX => 7,
         _ => 0,
-    } + val.cycles;
+    };
     cycles
 }
 
@@ -546,7 +532,8 @@ pub fn jsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Jump to Subroutine
     log_instruct("JSR", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
-    bus.stack_push_word(bus.cpu.get_counter().wrapping_sub(1));
+    bus.increment_pc(&address_mode);
+    bus.stack_push_word(bus.cpu.get_counter());
     bus.cpu.set_counter(val.address);
     6 // JSR takes 6 cycles
 }
@@ -615,7 +602,15 @@ pub fn lsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Logical Shift Right
     log_instruct("LSR", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
-    let val = bus.read_address_with_mode(&address_mode);
+    let val = if is_accumulator {
+        ReadAddressWithModeResult {
+            address: 0,
+            value: bus.cpu.get(Registers::A),
+            cycles: 0,
+        }
+    } else {
+        bus.read_address_with_mode(&address_mode)
+    };
     let res = val.value >> 1;
     bus.cpu.set_carry(val.value & 0x01 != 0);
     bus.cpu.set_zero(res == 0);
@@ -633,7 +628,7 @@ pub fn lsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         AddressMode::Absolute => 6,
         AddressMode::AbsoluteX => 7,
         _ => 0,
-    } + val.cycles;
+    };
     cycles
 }
 
@@ -679,7 +674,8 @@ pub fn php(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Push Processor Status
     log_instruct("PHP", &address_mode, Some(bus));
     bus.increment_pc(&address_mode);
-    bus.stack_push(bus.cpu.get(Registers::P));
+    let p_register = bus.cpu.get(Registers::P) | 0b0011_0000; // Set break and unused bits
+    bus.stack_push(p_register);
     3 // PHP takes 3 cycles
 }
 
@@ -697,10 +693,9 @@ pub fn pla(bus: &mut Bus, address_mode: AddressMode) -> u8 {
 pub fn plp(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Pull Processor Status
     log_instruct("PLP", &address_mode, Some(bus));
-    let mut val = bus.stack_pull();
+    let val = bus.stack_pull();
     let interrupt_disable = val & 0b0000_0100;
-    bus.cpu.delayed_interrupt = Some(interrupt_disable != 0);
-    val = (val & 0b1111_1011) | (bus.cpu.get(Registers::P) & 0b0000_0100);
+    bus.cpu.delayed_interrupt_flag = Some(interrupt_disable != 0);
     bus.cpu.set(Registers::P, val);
     bus.increment_pc(&address_mode);
     4 // PLP takes 4 cycles
@@ -710,7 +705,15 @@ pub fn rol(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Rotate Left
     log_instruct("ROL", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
-    let val = bus.read_address_with_mode(&address_mode);
+    let val = if is_accumulator {
+        ReadAddressWithModeResult {
+            address: 0,
+            value: bus.cpu.get(Registers::A),
+            cycles: 0,
+        }
+    } else {
+        bus.read_address_with_mode(&address_mode)
+    };
     let res = (val.value << 1) | bus.cpu.get_carry();
     bus.cpu.set_carry(val.value & 0x80 != 0);
     bus.cpu.set_zero(res == 0);
@@ -728,7 +731,7 @@ pub fn rol(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         AddressMode::Absolute => 6,
         AddressMode::AbsoluteX => 7,
         _ => 0,
-    } + val.cycles;
+    };
     cycles
 }
 
@@ -736,7 +739,15 @@ pub fn ror(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Rotate Right
     log_instruct("ROR", &address_mode, Some(bus));
     let is_accumulator = address_mode == AddressMode::Accumulator;
-    let val = bus.read_address_with_mode(&address_mode);
+    let val = if is_accumulator {
+        ReadAddressWithModeResult {
+            address: 0,
+            value: bus.cpu.get(Registers::A),
+            cycles: 0,
+        }
+    } else {
+        bus.read_address_with_mode(&address_mode)
+    };
     let res = (val.value >> 1) | (bus.cpu.get_carry() << 7);
     bus.cpu.set_carry(val.value & 0x01 != 0);
     bus.cpu.set_zero(res == 0);
@@ -754,7 +765,7 @@ pub fn ror(bus: &mut Bus, address_mode: AddressMode) -> u8 {
         AddressMode::Absolute => 6,
         AddressMode::AbsoluteX => 7,
         _ => 0,
-    } + val.cycles;
+    };
     cycles
 }
 
@@ -762,7 +773,7 @@ pub fn rti(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Return from Interrupt
     log_instruct("RTI", &address_mode, Some(bus));
     let flags = bus.stack_pull();
-    bus.cpu.set(Registers::P, flags);
+    bus.cpu.set(Registers::P, flags & 0b1100_1111);
     let pc = bus.stack_pull_word();
     bus.cpu.set_counter(pc);
     6 // RTI takes 6 cycles
@@ -772,7 +783,7 @@ pub fn rts(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     // Return from Subroutine
     log_instruct("RTS", &address_mode, Some(bus));
     let pc = bus.stack_pull_word();
-    bus.cpu.set_counter(pc + 1);
+    bus.cpu.set_counter(pc);
     6 // RTS takes 6 cycles
 }
 
@@ -782,11 +793,11 @@ pub fn sbc(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     let val = bus.read_address_with_mode(&address_mode);
     let acc = bus.cpu.get(Registers::A);
     let carry = bus.cpu.get_carry();
-    let result = acc as i16 + !val.value as i16 + carry as i16;
+    let result = acc as u16 + !val.value as u16 + carry as u16;
     bus.cpu.set_carry(result > 0xFF);
     bus.cpu.set_zero(result & 0xFF == 0);
     bus.cpu
-        .set_overflow(((acc ^ result as u8) & (!val.value as u8 ^ result as u8) & 0x80) != 0);
+        .set_overflow(((acc ^ (result as u8)) & (!val.value ^ (result as u8)) & 0x80) != 0);
     bus.cpu.set_negative(result & 0x80 != 0);
     bus.cpu.set(Registers::A, result as u8);
     bus.increment_pc(&address_mode);

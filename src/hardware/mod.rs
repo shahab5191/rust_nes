@@ -23,14 +23,14 @@ impl Hardware {
 
     pub fn step(&mut self, log: bool) -> Result<u32, io::Error> {
         // Execute a single CPU instruction
-        let delayed_interrupt = match self.bus.cpu.delayed_interrupt {
-            Some(true) => {
-                self.bus.cpu.delayed_interrupt = None;
-                true
+        match self.bus.cpu.delayed_interrupt_flag {
+            Some(val) => {
+                self.bus.cpu.set_interrupt_disable(val);
+                self.bus.cpu.delayed_interrupt_flag = None;
             }
-            _ => false,
+            _ => {}
         };
-        let cycles = if self.bus.ppu.get_nmi_pending() && !delayed_interrupt {
+        let cycles = if self.bus.ppu.get_nmi_pending() {
             self.bus.ppu.set_nmi_pending(false);
             let nmi_vector = self.bus.read_word(0xFFFA) as u16;
             self.bus.cpu.nmi(nmi_vector)
@@ -61,7 +61,6 @@ impl Hardware {
 
             (instruction.execute)(&mut self.bus, instruction.address_mode)
         };
-        self.bus.cpu.delayed_interrupt = None;
         self.cpu_cycles += cycles as u32;
 
         let cycle_count = cycles * 3;

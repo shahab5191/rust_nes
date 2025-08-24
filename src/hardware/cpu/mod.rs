@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use super::{bus::Bus, enums::Registers, memory::Memory};
+use super::{enums::Registers, memory::Memory};
 
 pub mod instructions;
 pub mod opcode;
@@ -13,7 +13,7 @@ pub struct CPU {
     s: u8,
     p: u8,
     pc: u16,
-    pub delayed_interrupt: Option<bool>,
+    pub delayed_interrupt_flag: Option<bool>,
     memory: Rc<RefCell<Memory>>,
 }
 
@@ -26,8 +26,8 @@ impl CPU {
             s: 0,
             p: 0b1000,
             pc: 0xFFFC,
-            delayed_interrupt: None,
-            memory: memory,
+            delayed_interrupt_flag: None,
+            memory,
         }
     }
 
@@ -144,7 +144,7 @@ impl CPU {
         self.s = 0xFD; // Stack starts at 0xFD
         self.pc = 0x0;
         self.p = 0b00000100; // Set unused bit, clear others
-        self.delayed_interrupt = None;
+        self.delayed_interrupt_flag = None;
         println!("CPU reset.");
     }
 

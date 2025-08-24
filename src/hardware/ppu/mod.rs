@@ -306,6 +306,7 @@ impl Ppu {
             0x2007 => {
                 // PPUDATA
                 let addr = self.vram_addr & 0x3FFF;
+                println!("PPUDATA write: {:#04X} to {:#04X}", value, addr);
                 self.write_vram(addr, value);
                 self.vram_addr =
                     self.vram_addr
