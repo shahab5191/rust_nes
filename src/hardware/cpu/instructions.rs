@@ -369,14 +369,11 @@ pub fn cpx(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("CPX", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let reg = bus.cpu.x;
-    let res = reg as i8 - val.value as i8;
-    if res >= 0 {
-        bus.cpu.set_carry(true);
-        if res == 0 {
-            bus.cpu.set_zero(true);
-        }
-    }
-    bus.cpu.set_negative(res < 0);
+    let res = reg.wrapping_sub(val.value);
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_carry(reg >= val.value);
+    bus.cpu.set_negative((res & 0x80) != 0);
+
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::Immediate => 2,
@@ -392,14 +389,11 @@ pub fn cpy(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     log_instruct("CPY", &address_mode, Some(bus));
     let val = bus.read_address_with_mode(&address_mode);
     let reg = bus.cpu.y;
-    let res = reg as i8 - val.value as i8;
-    if res >= 0 {
-        bus.cpu.set_carry(true);
-        if res == 0 {
-            bus.cpu.set_zero(true);
-        }
-    }
-    bus.cpu.set_negative(res < 0);
+    let res = reg.wrapping_sub(val.value);
+    bus.cpu.set_zero(res == 0);
+    bus.cpu.set_negative((res & 0x80) != 0);
+    bus.cpu.set_carry(reg >= val.value);
+
     bus.increment_pc(&address_mode);
     let cycles: u8 = match address_mode {
         AddressMode::Immediate => 2,
@@ -554,7 +548,6 @@ pub fn jsr(bus: &mut Bus, address_mode: AddressMode) -> u8 {
     let val = bus.read_address_with_mode(&address_mode);
     bus.stack_push_word(bus.cpu.get_counter().wrapping_sub(1));
     bus.cpu.set_counter(val.address);
-    bus.increment_pc(&address_mode);
     6 // JSR takes 6 cycles
 }
 

@@ -103,7 +103,6 @@ impl Ppu {
                 let pallette_selector = (pallette_index & 0x03) << 2;
 
                 // TODO: Fetch tile data and render pixel
-                //
                 if self.cycle % 8 == 0 && self.cycle <= 256 {
                     // Increment coarse X (bits 0-4)
                     if self.vram_addr & 0x001F == 0x001F {

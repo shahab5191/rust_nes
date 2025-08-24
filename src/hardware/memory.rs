@@ -19,22 +19,11 @@ impl Memory {
         temp
     }
 
-    pub fn silent_read(&self, address: u16) -> u8 {
-        let real_address = address % 0x7ff;
-        self.mem[real_address as usize]
-    }
-
     pub fn read(&self, address: u16) -> u8 {
         // Handling address mirroring in NES
-        let real_address = address % 0x7ff;
+        let real_address = address % 0x800;
         let value = self.mem[real_address as usize];
         value
-    }
-
-    pub fn read_word(&self, address: u16) -> u16 {
-        let low = self.read(address);
-        let high = self.read(address + 1);
-        ((high as u16) << 8) | (low as u16)
     }
 
     pub fn write(&mut self, address: u16, value: u8) {
@@ -45,10 +34,6 @@ impl Memory {
             println!("Warning: Writing to non-ram address {:#04X}", address);
             return;
         };
-    }
-
-    pub fn get_memory_slice(&self) -> &[u8] {
-        &self.mem
     }
 
     pub fn reset(&mut self) {

@@ -70,12 +70,12 @@ impl CPU {
         let flag = self.get_status(1);
         flag
     }
-    pub fn get_interrupt_disable(&self) -> u8 {
-        let flag = self.get_status(2);
+    pub fn get_decimal_mode(&self) -> u8 {
+        let flag = self.get_status(3);
         flag
     }
-    pub fn get_decimal(&self) -> u8 {
-        let flag = self.get_status(3);
+    pub fn get_interrupt_disable(&self) -> u8 {
+        let flag = self.get_status(2);
         flag
     }
     pub fn get_overflow(&self) -> u8 {

@@ -21,59 +21,70 @@ impl Hardware {
         }
     }
 
-    pub fn tick(&mut self) -> Result<(), io::Error> {
-        loop {
-            // Execute instruction and determine cycles
-            let delayed_interrupt = match self.bus.cpu.delayed_interrupt {
-                Some(true) => {
-                    self.bus.cpu.delayed_interrupt = None;
-                    true
+    pub fn step(&mut self, log: bool) -> Result<u32, io::Error> {
+        // Execute a single CPU instruction
+        let delayed_interrupt = match self.bus.cpu.delayed_interrupt {
+            Some(true) => {
+                self.bus.cpu.delayed_interrupt = None;
+                true
+            }
+            _ => false,
+        };
+        let cycles = if self.bus.ppu.get_nmi_pending() && !delayed_interrupt {
+            self.bus.ppu.set_nmi_pending(false);
+            let nmi_vector = self.bus.read_word(0xFFFA) as u16;
+            self.bus.cpu.nmi(nmi_vector)
+        } else {
+            // Fetch and decode instruction
+            let opcode = self.bus.read_instruct();
+            // get time spent on this part
+            let instruction = match opcode::get_instruction(opcode) {
+                Some(instr) => instr,
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "Invalid opcode [0x{:04X}]: 0x{:02X}",
+                            self.bus.cpu.get_counter(),
+                            opcode
+                        ),
+                    ));
                 }
-                _ => false,
             };
-            let cycles = if self.bus.ppu.get_nmi_pending() && !delayed_interrupt {
-                self.bus.ppu.set_nmi_pending(false);
-                let nmi_vector = self.bus.read_word(0xFFFA) as u16;
-                self.bus.cpu.nmi(nmi_vector)
-            } else {
-                // Fetch and decode instruction
-                let opcode = self.bus.read_instruct();
-                // get time spent on this part
-                let instruction = match opcode::get_instruction(opcode) {
-                    Some(instr) => instr,
-                    None => {
-                        return Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            format!(
-                                "Invalid opcode [0x{:04X}]: 0x{:02X}",
-                                self.bus.cpu.get_counter(),
-                                opcode
-                            ),
-                        ));
-                    }
-                };
 
-                // let (instruct, _) = self
-                //     .bus
-                //     .create_disassembled_line(self.bus.cpu.get_counter());
-                // println!("[0x{:04X}] {}", self.bus.cpu.get_counter(), instruct);
-
-                (instruction.execute)(&mut self.bus, instruction.address_mode)
-            };
-            self.bus.cpu.delayed_interrupt = None;
-            self.cpu_cycles += cycles as u32;
-
-            let cycle_count = cycles * 3;
-
-            // Run PPU ticks
-            for _ in 0..cycle_count {
-                self.bus.ppu.tick();
+            if log {
+                let (instruct, _) = self
+                    .bus
+                    .create_disassembled_line(self.bus.cpu.get_counter());
+                println!("[0x{:04X}] {}", self.bus.cpu.get_counter(), instruct);
             }
 
-            if self.cpu_cycles >= 29780 {
-                // Reset CPU cycles after a frame
-                self.cpu_cycles = 0;
-                self.bus.ppu.frame_complete = false;
+            (instruction.execute)(&mut self.bus, instruction.address_mode)
+        };
+        self.bus.cpu.delayed_interrupt = None;
+        self.cpu_cycles += cycles as u32;
+
+        let cycle_count = cycles * 3;
+
+        // Run PPU ticks
+        for _ in 0..cycle_count {
+            self.bus.ppu.tick();
+        }
+        if self.cpu_cycles >= 29780 {
+            // Reset CPU cycles after a frame
+            let cycle = self.cpu_cycles;
+            self.cpu_cycles = 0;
+            self.bus.ppu.frame_complete = false;
+            return Ok(cycle);
+        }
+        Ok(self.cpu_cycles)
+    }
+
+    pub fn tick(&mut self) -> Result<(), io::Error> {
+        // Execute a single CPU instruction and update PPU
+        loop {
+            // Update the PPU state
+            if self.step(false)? >= 29780 {
                 return Ok(());
             }
         }
@@ -147,5 +158,21 @@ impl Hardware {
 
     pub fn get_pc(&self) -> u16 {
         self.bus.cpu.get_counter()
+    }
+
+    pub fn get_flag(&self, flag: enums::Flags) -> u8 {
+        match flag {
+            enums::Flags::Carry => self.bus.cpu.get_carry(),
+            enums::Flags::Zero => self.bus.cpu.get_zero(),
+            enums::Flags::InterruptDisable => self.bus.cpu.get_interrupt_disable(),
+            enums::Flags::DecimalMode => self.bus.cpu.get_decimal_mode(),
+            enums::Flags::BreakCommand => self.bus.cpu.get_break(),
+            enums::Flags::Overflow => self.bus.cpu.get_overflow(),
+            enums::Flags::Negative => self.bus.cpu.get_negative(),
+        }
+    }
+
+    pub fn get_cycle(&self) -> u32 {
+        self.cpu_cycles
     }
 }

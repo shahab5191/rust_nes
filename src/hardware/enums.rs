@@ -6,3 +6,14 @@ pub enum Registers {
     S,
     P,
 }
+
+#[derive(Debug)]
+pub enum Flags {
+    Carry,
+    Zero,
+    InterruptDisable,
+    DecimalMode,
+    BreakCommand,
+    Overflow,
+    Negative,
+}

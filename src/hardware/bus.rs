@@ -64,7 +64,7 @@ impl Bus {
 
     pub fn read(&mut self, address: u16) -> u8 {
         if address < 0x2000 {
-            self.memory.borrow().read(address % 0x0800)
+            self.memory.borrow().read(address)
         } else if address < 0x4000 {
             self.ppu
                 .read_register(address)
@@ -124,7 +124,7 @@ impl Bus {
 
     pub fn write(&mut self, address: u16, value: u8) {
         if address < 0x2000 {
-            self.memory.borrow_mut().write(address % 0x0800, value);
+            self.memory.borrow_mut().write(address, value);
         } else if address < 0x4000 {
             self.ppu.write_register(address, value);
         } else if address < 0x4018 {
@@ -316,10 +316,6 @@ impl Bus {
         }
     }
 
-    pub fn ppu_write(&mut self, address: u16, value: u8) {
-        self.cartridge.borrow_mut().mapper.ppu_write(address, value);
-    }
-
     pub fn ppu_read(&mut self, address: u16) -> Option<u8> {
         match address {
             0x0000..=0x1FFF => {
@@ -331,18 +327,6 @@ impl Bus {
                 self.cartridge.borrow().mapper.ppu_read(address)
             }
         }
-    }
-
-    pub fn cpu_read(&mut self, address: u16) -> u8 {
-        self.cartridge
-            .borrow()
-            .mapper
-            .cpu_read(address)
-            .expect(format!("Could not read cpu on {}", address).as_str())
-    }
-
-    fn cpu_write(&mut self, addr: u16, value: u8) {
-        self.cartridge.borrow_mut().mapper.cpu_write(addr, value);
     }
 
     pub fn read_tile(&mut self, tile_index: u16) -> [u8; 16] {
@@ -420,8 +404,8 @@ impl Bus {
         if let Some(addr) = address {
             instruct = self.read_cartridge(addr);
             next = self.read_cartridge(addr.wrapping_add(1));
-            next_word = (self.read_cartridge(addr.wrapping_add(1)) as u16) << 8
-                | self.read_cartridge(addr.wrapping_add(2)) as u16;
+            next_word = (self.read_cartridge(addr.wrapping_add(2)) as u16) << 8
+                | self.read_cartridge(addr.wrapping_add(1)) as u16;
         } else {
             instruct = self.read_cartridge(self.cpu.get_counter());
             next = self.read_cartridge(self.cpu.get_counter().wrapping_add(1));
