@@ -3,7 +3,8 @@ use std::time::{Duration, Instant};
 use crate::hardware::enums::Registers;
 use crate::hardware::{Hardware, enums};
 use iced::executor;
-use iced::widget::{Button, Image, column, image, row, text, text_input};
+use iced::widget::image::Handle;
+use iced::widget::{Button, Column, Image, column, image, row, text, text_input};
 use iced::{Application, Command, Element, Subscription, Theme, time};
 
 #[derive(Default, Debug, Clone)]
@@ -25,6 +26,54 @@ pub struct Nes {
     chr_1_buffer: image::Handle,
     chr_2_buffer: image::Handle,
     step_size: u32,
+    palette: Vec<Vec<[u8; 4]>>,
+}
+
+impl Nes {
+    fn create_single_palette(palette: &[[u8; 4]]) -> Image<Handle> {
+        let mut pixels = vec![0; 40 * 160 * 4];
+        for pal in 0..4 {
+            for x in 0..40 {
+                for y in 0..40 {
+                    let index = (pal * 160 + x * 4) + (y * 160 * 4);
+                    if let Some(color) = palette.get(pal) {
+                        pixels[index] = color[0];
+                        pixels[index + 1] = color[1];
+                        pixels[index + 2] = color[2];
+                        pixels[index + 3] = 255;
+                    } else {
+                        // Fallback to black if the palette is not defined
+                        pixels[index] = 0;
+                        pixels[index + 1] = 0;
+                        pixels[index + 2] = 0;
+                        pixels[index + 3] = 255;
+                    }
+                }
+            }
+        }
+        let palette_image =
+            Image::<image::Handle>::new(image::Handle::from_pixels(160, 40, pixels))
+                .width(160)
+                .height(40);
+
+        return palette_image;
+    }
+
+    fn create_palette(palette: [[u8; 4]; 32]) -> Vec<Vec<[u8; 4]>> {
+        let bg_color = palette.get(0).unwrap_or(&[0, 0, 0, 255]);
+        let mut palette_list: Vec<Vec<[u8; 4]>> = Vec::with_capacity(8);
+        for i in 0..8 {
+            let palette = [
+                palette.get(i * 4 + 1).unwrap_or(&[0, 0, 0, 255]).clone(),
+                palette.get(i * 4 + 2).unwrap_or(&[0, 0, 0, 255]).clone(),
+                palette.get(i * 4 + 3).unwrap_or(&[0, 0, 0, 255]).clone(),
+                bg_color.clone(),
+            ]
+            .to_vec();
+            palette_list.push(palette);
+        }
+        return palette_list;
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,15 +96,18 @@ impl Application for Nes {
 
     fn new(_flags: ()) -> (Self, Command<NesMessage>) {
         // Initialize the application with a default state.
+        let emulator = Hardware::new();
+        let palette = emulator.get_palette();
         let nes = Nes {
             cpu_state: CpuState::default(),
             fps: 60,
             last_tick: None,
             running: false,
-            emulator: Hardware::new(),
+            emulator,
             chr_1_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
             chr_2_buffer: image::Handle::from_pixels(128, 128, vec![0; 128 * 128 * 4]),
             step_size: 1,
+            palette: Nes::create_palette(palette),
         };
         (nes, Command::none())
     }
@@ -117,6 +169,8 @@ impl Application for Nes {
                     self.cpu_state.p = self.emulator.get_cpu_reg(Registers::P);
                     self.cpu_state.s = self.emulator.get_cpu_reg(Registers::S);
                     self.cpu_state.pc = self.emulator.get_pc();
+
+                    self.palette = Nes::create_palette(self.emulator.get_palette());
                 }
             }
             NesMessage::SetStep(size) => {
@@ -164,6 +218,7 @@ impl Application for Nes {
                 NesMessage::Noop // If parsing fails, do nothing
             }
         });
+
         let step_button = Button::new(text("Step")).on_press(NesMessage::Step(self.step_size));
 
         let chr_1_image = Image::<image::Handle>::new(self.chr_1_buffer.clone())
@@ -173,14 +228,20 @@ impl Application for Nes {
             .width(512)
             .height(512);
 
-        let memory_dump_text = text(self.emulator.get_memory_dump(0x8000, 0x8800));
+        //let memory_dump_text = text(self.emulator.get_memory_dump(0x8000, 0x8800));
+
+        let mut palette_image_list = row![].padding(10).spacing(10);
+        for palette in &self.palette {
+            let pallete_image = Nes::create_single_palette(palette);
+            palette_image_list = palette_image_list.push(pallete_image);
+        }
 
         let mut row1 = row![fps_text, cpu_state_text, cpu_flags_text];
         let row_controls = row![load_button, start_button, step_button, step_text];
         row1 = row1.padding(10).spacing(10);
         let row2 = row![chr_1_image, chr_2_image];
-        let row3 = row![text("Memory Dump:"), memory_dump_text];
-        column![row1, row_controls, row2, row3].into()
+        //let row3 = row![text("Memory Dump:"), memory_dump_text];
+        column![row1, row_controls, row2, palette_image_list].into()
     }
 
     fn subscription(&self) -> Subscription<NesMessage> {

@@ -175,4 +175,8 @@ impl Hardware {
     pub fn get_cycle(&self) -> u32 {
         self.cpu_cycles
     }
+
+    pub fn get_palette(&self) -> [[u8; 4]; 32] {
+        self.bus.ppu.get_palette_rgba()
+    }
 }

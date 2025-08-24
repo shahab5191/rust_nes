@@ -1,5 +1,6 @@
 mod memory;
-use std::{cell::RefCell, rc::Rc};
+mod palette_map;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::cartridge::Cartridge;
 
@@ -23,10 +24,13 @@ pub struct Ppu {
     pub fine_x: u8,
     pub buffered_data: u8, // used for delayed PPU reads
 
-    pallette: [u8; 32],
+    palette: [u8; 32],
     frame_buffer: Vec<u8>,
     cartridge: Rc<RefCell<Cartridge>>,
     nmi_pending: bool,
+
+    palette_rgba: [[u8; 4]; 32],     // Map for NES colors
+    color_map: HashMap<u8, [u8; 4]>, // Map for NES colors
 }
 
 impl Ppu {
@@ -49,9 +53,11 @@ impl Ppu {
             fine_x: 0x00,        // Fine X scroll
             buffered_data: 0x00, // PPUDATA read buffer
             cartridge,
-            pallette: [0; 32], // Palette RAM: Zero-filled (or random)
+            palette: [0; 32], // Palette RAM: Zero-filled (or random)
             frame_buffer: vec![0; 256 * 240 * 4], // Black screen
             nmi_pending: false, // No NMI pending
+            palette_rgba: [[0; 4]; 32], // RGBA palette
+            color_map: palette_map::get_color_map(),
         }
     }
 
@@ -183,7 +189,7 @@ impl Ppu {
         } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
             // Palette memory
             let address = (mapped_addr - 0x3F00) % 0x20;
-            self.pallette.get(address as usize).copied()
+            self.palette.get(address as usize).copied()
         } else {
             // Invalid address
             eprintln!("PPU Read: Invalid address 0x{:04X}", addr);
@@ -202,7 +208,7 @@ impl Ppu {
         } else if mapped_addr >= 0x3F00 && mapped_addr < 0x4000 {
             // Palette memory
             let address = (mapped_addr - 0x3F00) % 0x20;
-            self.pallette[address as usize] = value;
+            self.set_palette(address as usize, value);
         } else {
             // Invalid address
             eprintln!("PPU Write: Invalid address 0x{:04X}", addr);
@@ -307,5 +313,29 @@ impl Ppu {
             }
             _ => {}
         }
+    }
+
+    pub fn get_palette(&self) -> &[u8; 32] {
+        &self.palette
+    }
+
+    pub fn get_nes_color(&self, index: u8) -> [u8; 4] {
+        self.color_map
+            .get(&index)
+            .cloned()
+            .unwrap_or([0, 0, 0, 255])
+    }
+
+    pub fn set_palette(&mut self, index: usize, value: u8) {
+        if index < self.palette.len() {
+            self.palette[index] = value;
+            self.palette_rgba[index] = self.get_nes_color(value);
+        } else {
+            eprintln!("PPU set_palette: Index {} out of bounds", index);
+        }
+    }
+
+    pub fn get_palette_rgba(&self) -> [[u8; 4]; 32] {
+        self.palette_rgba
     }
 }
